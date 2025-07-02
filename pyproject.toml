@@ -1,0 +1,65 @@
+[tool.poetry]
+name = "leek-manager"
+version = "0.1.0"
+description = "Leek Manager Service - 量化交易管理系统"
+authors = ["shenglin.li <764935704@qq.com>"]
+readme = "README.md"
+package-mode = false
+homepage = "https://github.com/shenglin-li/leek"
+repository = "https://github.com/shenglin-li/leek"
+documentation = "https://github.com/shenglin-li/leek"
+keywords = [
+    "quantitative trading",
+    "algorithmic trading",
+    "finance",
+    "investment",
+    "trading system",
+    "management system"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: Chinese (Simplified)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Framework :: FastAPI",
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "0.115.12"
+uvicorn = "0.27.1"
+pydantic = ">=2.1.4"
+pydantic-settings = ">=2.1.0"
+python-dotenv = ">=1.1.0"
+sqlalchemy = "~=2.0.27"
+python-jose = "3.3.0"
+python-multipart = "0.0.9"
+werkzeug = ">=3.0.1"
+alembic = "1.13.1"
+mysqlclient = ">=2.2.1"
+leek-core = { path = "../leek-core", develop = true }
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0"
+black = "^23.0"
+isort = "^5.0"
+flake8 = "^6.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3 

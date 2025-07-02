@@ -1,0 +1,1 @@
+import{L as o}from"./index-996b1aff.js";const t=()=>o.get("/authorization/roles"),a=t=>o.post("/authorization/roles",t),s=(t,a)=>o.put(`/authorization/roles/${t}`,a),i=t=>o.delete(`/authorization/roles/${t}`),r=()=>o.get("/authorization/permissions");export{r as a,a as c,i as d,t as g,s as u};
