@@ -2,10 +2,14 @@ from sqlalchemy.orm import Session
 from app.models.user import User
 from app.core.config_manager import config_manager
 from app.core.security import get_password_hash
-
+__init_lock = False
 def init_db(db: Session) -> None:
     """初始化数据库，创建管理员账号"""
     # 检查是否已配置管理员账号
+    global __init_lock
+    if __init_lock:
+        return
+    __init_lock = True
     admin_config = config_manager.config.admin
     if not admin_config:
         return

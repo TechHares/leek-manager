@@ -7,7 +7,7 @@ class Signal(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, index=True)
-    data_source_instance_id =  Column(JSON, index=True)
+    data_source_instance_id =  Column(JSON)
     data_source_class_name = Column(String(200), nullable=False)
     strategy_id =  Column(Integer, index=True)
     strategy_instance_id =  Column(String(200), nullable=False)

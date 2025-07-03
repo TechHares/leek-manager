@@ -9,9 +9,7 @@ from app.schemas.strategy import (
 from app.schemas.template import TemplateResponse
 from app.core.template_manager import leek_template_manager
 from app.core.engine import engine_manager
-
 router = APIRouter()
-
 @router.get("/strategies", response_model=List[StrategyConfigOut])
 def list_strategies(
     db: Session = Depends(deps.get_db),

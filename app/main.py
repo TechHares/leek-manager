@@ -9,6 +9,12 @@ from app.core.engine import start_engine_manager
 import asyncio
 from contextlib import asynccontextmanager
 import os
+import logging
+from leek_core.utils import get_logger
+import time
+from starlette.middleware.base import BaseHTTPMiddleware
+
+logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -21,6 +27,11 @@ async def lifespan(app: FastAPI):
         await engine_task
     except asyncio.CancelledError:
         pass
+
+# 配置日志级别，减少 uvicorn 的日志输出
+logging.getLogger("uvicorn").setLevel(logging.ERROR)
+logging.getLogger("uvicorn.access").setLevel(logging.ERROR)
+logging.getLogger("uvicorn.error").setLevel(logging.ERROR)
 
 app = FastAPI(
     title="Leek Manager API",
@@ -38,7 +49,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 统计接口耗时的中间件
+class TimingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        start_time = time.time()
+        response = await call_next(request)
+        process_time = (time.time() - start_time) * 1000  # 毫秒
+        logger.info(f"接口 {request.url.path} 耗时: {process_time:.2f} ms")
+        response.headers["X-Process-Time"] = str(process_time)
+        return response
+
 # 注册全局系统级权限中间件
+app.add_middleware(TimingMiddleware)
 app.middleware("http")(system_permission_middleware)
 
 # Include routers

@@ -68,10 +68,7 @@ target_metadata = Base.metadata
 # ... etc.
 
 def get_url():
-    db_config = config_manager.get_config()["business_db"]
-    if db_config["type"] == "sqlite":
-        return f"sqlite:///{db_config['path']}"
-    return db_config.get_connection_string()
+    return config_manager.get_connection_string("business_db")
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.

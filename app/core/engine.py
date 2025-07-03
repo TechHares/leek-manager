@@ -9,7 +9,7 @@ from leek_core.event import Event, EventType
 from app.models.project import Project
 from app.models.signal import Signal
 from app.models.order import ExecutionOrder, Order
-from app.db.session import get_db
+from app.db.session import db_connect, get_db
 from sqlalchemy.orm import Session
 from leek_core.utils import get_logger
 from app.models.project_config import ProjectConfig
@@ -19,6 +19,7 @@ from app.models.strategy import Strategy
 from decimal import Decimal
 from datetime import datetime
 from app.models.position import Position
+from app.core.config_manager import config_manager
 
 logger = get_logger(__name__)
 
@@ -41,17 +42,17 @@ class EngineManager:
         client.register_handler("position_data", self.handle_position_data)
 
     def handle_strategy_data(self, project_id: int, strategy_id: str, data: dict):
-        db: Optional[Session] = next(get_db())
-        strategy = db.query(Strategy).filter(Strategy.project_id == int(project_id), Strategy.id == int(strategy_id), Strategy.is_enabled == True).first()
-        if strategy:
-            strategy.data = data
-            db.commit()
+        with db_connect() as db:
+            strategy = db.query(Strategy).filter(Strategy.project_id == int(project_id), Strategy.id == int(strategy_id), Strategy.is_enabled == True).first()
+            if strategy:
+                strategy.data = data
+                db.commit()
 
     def handle_position_data(self, project_id: str, data: dict):
-        db: Optional[Session] = next(get_db())
-        project_config = db.query(ProjectConfig).filter(ProjectConfig.project_id == int(project_id)).first()
-        project_config.position_data = data
-        db.commit()
+        with db_connect() as db:
+            project_config = db.query(ProjectConfig).filter(ProjectConfig.project_id == int(project_id)).first()
+            project_config.position_data = data
+            db.commit()
 
     def convert_position(self, project_id: int, position) -> Position:
         """转换仓位模型"""
@@ -111,46 +112,46 @@ class EngineManager:
     def handle_event(self, project_id: int, event: Event):
         logger.info(f"收到事件[{project_id}]: {event.event_type} {event.data}")
         if event.event_type == EventType.EXEC_ORDER_UPDATED:
-            db: Optional[Session] = next(get_db())
-            execution_info = db.query(ExecutionOrder).filter(ExecutionOrder.id == int(event.data.context_id)).first()
-            if execution_info:
-                execution_info.actual_ratio = event.data.actual_ratio
-                execution_info.actual_amount = event.data.actual_amount
-                execution_info.actual_pnl = event.data.actual_pnl
-                execution_info.execution_assets = [
-                    {
-                        "asset_type": asset.asset_type.value,
-                        "ins_type": asset.ins_type.value,
-                        "symbol": asset.symbol,
-                        "side": asset.side.value,
-                        "price": str(asset.price) if asset.price else None,
-                        "is_open": asset.is_open,
-                        "is_fake": asset.is_fake,
-                        "ratio": str(asset.ratio) if asset.ratio else None,
-                        "amount": str(asset.amount) if asset.amount else None,
-                        "sz": str(asset.sz) if asset.sz else None,
-                        "quote_currency": asset.quote_currency,
-                        "extra": asset.extra,
-                        "position_id": asset.position_id,
-                        "actual_pnl": str(asset.actual_pnl) if asset.actual_pnl else None,
-                    }  for asset in event.data.execution_assets
-                ]
-                execution_info.extra = event.data.extra
-                db.commit()
+            with db_connect() as db:
+                execution_info = db.query(ExecutionOrder).filter(ExecutionOrder.id == int(event.data.context_id)).first()
+                if execution_info:
+                    execution_info.actual_ratio = event.data.actual_ratio
+                    execution_info.actual_amount = event.data.actual_amount
+                    execution_info.actual_pnl = event.data.actual_pnl
+                    execution_info.execution_assets = [
+                        {
+                            "asset_type": asset.asset_type.value,
+                            "ins_type": asset.ins_type.value,
+                            "symbol": asset.symbol,
+                            "side": asset.side.value,
+                            "price": str(asset.price) if asset.price else None,
+                            "is_open": asset.is_open,
+                            "is_fake": asset.is_fake,
+                            "ratio": str(asset.ratio) if asset.ratio else None,
+                            "amount": str(asset.amount) if asset.amount else None,
+                            "sz": str(asset.sz) if asset.sz else None,
+                            "quote_currency": asset.quote_currency,
+                            "extra": asset.extra,
+                            "position_id": asset.position_id,
+                            "actual_pnl": str(asset.actual_pnl) if asset.actual_pnl else None,
+                        }  for asset in event.data.execution_assets
+                    ]
+                    execution_info.extra = event.data.extra
+                    db.commit()
             return
 
         if event.event_type == EventType.EXEC_ORDER_CREATED:
             execution_info = self.convert_exec_order(project_id, event)
-            db: Optional[Session] = next(get_db())
-            db.add(execution_info)
-            db.commit()
+            with db_connect() as db:
+                db.add(execution_info)
+                db.commit()
             return
 
         if event.event_type == EventType.POSITION_UPDATE:
             position = event.data
-            db: Optional[Session] = next(get_db())
-            # 查找是否存在该仓位
-            existing_position = db.query(Position).filter(
+            with db_connect() as db:
+                # 查找是否存在该仓位
+                existing_position = db.query(Position).filter(
                 Position.project_id == project_id,
                 Position.id == int(position.position_id)
             ).first()
@@ -172,9 +173,9 @@ class EngineManager:
         if event.event_type == EventType.ORDER_UPDATED or event.event_type == EventType.POSITION_INIT:
             event.data = [event.data]
             orders = self.convert_order(project_id, event)
-            db: Optional[Session] = next(get_db())
-            for order in orders:
-                existing_order = db.query(Order).filter(Order.id == order.id).first()
+            with db_connect() as db:
+                for order in orders:
+                    existing_order = db.query(Order).filter(Order.id == order.id).first()
                 if existing_order:
                     for key, value in order.__dict__.items():
                         if not key.startswith('_'):
@@ -183,17 +184,17 @@ class EngineManager:
             return
         if event.event_type == EventType.ORDER_CREATED:
             orders = self.convert_order(project_id, event)
-            db: Optional[Session] = next(get_db())
-            for order in orders:
-                db.add(order)
-            db.commit()
+            with db_connect() as db:
+                for order in orders:
+                    db.add(order)
+                db.commit()
             return
         
         if event.event_type == EventType.STRATEGY_SIGNAL:
-            db: Optional[Session] = next(get_db())
-            signal = self.convert_signal(project_id, event)
-            db.add(signal)
-            db.commit()
+            with db_connect() as db:
+                signal = self.convert_signal(project_id, event)
+                db.add(signal)
+                db.commit()
             return
     
     def convert_order(self, project_id, event) -> List[Order]:
@@ -324,8 +325,16 @@ class EngineManager:
             if instance_id in self.clients:
                 return self.clients[instance_id]
             # 1. 配置
-            db: Optional[Session] = next(get_db())
-            project_config = db.query(ProjectConfig).filter_by(project_id=int(instance_id)).first()
+            with db_connect() as db:
+                project_config = db.query(ProjectConfig).filter_by(project_id=int(instance_id)).first()
+                if not project_config:
+                    # 没有则插入一条默认配置
+                    project_config = ProjectConfig(project_id=int(instance_id))
+                    project_config.alert_config = []
+                    project_config.mount_dirs = ["default"]
+                    db.add(project_config)
+                    db.commit()
+                    db.refresh(project_config)
             client = ProcessEngineClient(instance_id, name,
                                           {c.name: getattr(project_config, c.name) for c in project_config.__table__.columns},
                                           event_hook=EVENTS)
@@ -365,11 +374,11 @@ class EngineManager:
 
     async def scan_projects(self):
         while True:
-            db: Optional[Session] = get_db()
-            if db is None:
+            config = config_manager.get_config()
+            if not config["is_configured"]:
                 await asyncio.sleep(self.scan_interval)
                 continue
-            db = next(db)
+            db = get_db()
             try:
                 projects = db.query(Project).filter(Project.is_deleted == False).all()
                 # 获取所有活跃项目的ID

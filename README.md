@@ -27,6 +27,10 @@
 
 > 📸 **截图说明**：以下截图展示了系统的主要功能界面，帮助用户快速了解系统操作流程。
 
+### 数据配置
+![数据配置](img/00-config.png)
+*数据配置，配置数据信息*
+
 ### 登录界面
 ![登录界面](img/01-login.png)
 *系统登录页面，支持用户名密码登录*
@@ -36,7 +40,8 @@
 *系统主控制台，显示关键指标和快速操作入口*
 
 ### 项目管理
-![项目管理](img/03-project-management.png)
+![项目管理1](img/03-project-management1.png)
+![项目管理2](img/03-project-management2.png)
 *项目管理界面，支持创建、编辑、删除项目*
 
 ### 项目设置
@@ -187,6 +192,7 @@ leek-manager/
 │   └── utils/         # 工具函数
 ├── migrations/        # 数据库迁移文件
 ├── img/              # 系统截图目录
+│   ├── 00-config.png
 │   ├── 01-login.png
 │   ├── 02-dashboard.png
 │   ├── 03-project-management.png
@@ -228,6 +234,53 @@ EXPOSE 8000
 
 # 启动命令
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+## 环境变量配置
+
+系统支持以下环境变量配置：
+
+### 必需环境变量
+
+#### LEEK_SECRET_KEY
+- **说明**: 用于JWT令牌签名和加密的密钥
+- **类型**: 字符串
+- **默认值**: 如果未设置，系统会自动生成一个32位随机字符串
+- **示例**: `LEEK_SECRET_KEY=your-super-secret-key-here`
+- **安全建议**: 
+  - 生产环境必须设置强密码
+  - 长度建议至少32位
+  - 包含字母、数字和特殊字符
+  - 定期更换密钥
+
+#### LEEK_ACCESS_TOKEN_EXPIRE_MINUTES
+- **说明**: JWT访问令牌的过期时间（分钟）
+- **类型**: 整数
+- **默认值**: 11520 (8天)
+- **示例**: `LEEK_ACCESS_TOKEN_EXPIRE_MINUTES=1440` (24小时)
+- **建议值**:
+  - 开发环境: 1440 (24小时)
+  - 生产环境: 60-480 (1-8小时)
+  - 高安全要求: 30-120 (30分钟-2小时)
+
+### 环境变量设置方式
+
+#### 方式1: 使用.env文件
+在项目根目录创建 `.env` 文件：
+```bash
+LEEK_SECRET_KEY=your-super-secret-key-here
+LEEK_ACCESS_TOKEN_EXPIRE_MINUTES=1440
+```
+
+#### 方式2: 系统环境变量
+```bash
+export LEEK_SECRET_KEY=your-super-secret-key-here
+export LEEK_ACCESS_TOKEN_EXPIRE_MINUTES=1440
+```
+
+#### 方式3: Docker环境变量
+```bash
+docker run -e LEEK_SECRET_KEY=your-super-secret-key-here -e LEEK_ACCESS_TOKEN_EXPIRE_MINUTES=1440 your-app
 ```
 
 ### 生产环境配置

@@ -14,7 +14,7 @@ from leek_core.info_fabricator import *
 from leek_core.sub_strategy import *
 from leek_core.policy import *
 from leek_core.risk import *
-from app.db.session import get_db
+from app.db.session import db_connect
 from app.models.project_config import ProjectConfig
 import sys
 from asyncio import Lock
@@ -61,12 +61,12 @@ class TemplateManager:
             #         if full_name in sys.modules:
             #             del sys.modules[full_name]
             # module = importlib.reload(module)
-            classes = []
+            classes = set()
             for name, obj in inspect.getmembers(module):
                 if inspect.isclass(obj) and obj.__module__.startswith(module.__name__):
                     if self._is_allowed_type(obj):
-                        classes.append(obj)
-            return classes
+                        classes.add(obj)
+            return list(classes)
         except ImportError as e:
             logger.error(f"Failed to import module {module_path}: {e}")
             return []
@@ -79,7 +79,7 @@ class TemplateManager:
         返回:
             在目录中找到的所有类的列表
         """
-        classes = []
+        classes = set()
         if directory_path not in sys.path:
                 sys.path.append(directory_path)
         for root, _, files in os.walk(directory_path):
@@ -89,8 +89,8 @@ class TemplateManager:
                     module_path = os.path.join(rel_path, file[:-3]).replace(os.sep, '.')
                     if rel_path == '.':
                         module_path = file[:-3]
-                    classes.extend(self.scan_module(module_path))
-        return classes
+                    classes.update(self.scan_module(module_path))
+        return list(classes)
 
     def add_directory(self, directory_path: str):
         """
@@ -221,12 +221,12 @@ class LeekTemplateManager(Generic[T]):
             
             tmp = TemplateManager(allowed_types={LeekComponent})
             if force_load:
-                db = next(get_db())
-                project_config = db.query(ProjectConfig).filter_by(project_id=project_id).first()
-                if project_config and project_config.mount_dirs:
-                    await self.update_manager_dirs(tmp, project_config.mount_dirs)
-                else:
-                    await self.update_manager_dirs(tmp, ["default"])
+                with db_connect() as db:
+                    project_config = db.query(ProjectConfig).filter_by(project_id=project_id).first()
+                    if project_config and project_config.mount_dirs:
+                        await self.update_manager_dirs(tmp, project_config.mount_dirs)
+                    else:
+                        await self.update_manager_dirs(tmp, ["default"])
             self.project_managers[project_id] = tmp
             return self.project_managers[project_id]
 

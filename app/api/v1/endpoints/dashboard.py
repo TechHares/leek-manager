@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any
 import psutil
 import os
+import requests
 import logging
 from app.core.config import settings
 from app.core.engine import engine_manager
@@ -27,10 +28,15 @@ async def get_dashboard_overview(current_user: User = Depends(get_current_user),
             "sys_version": settings.VERSION,
             }
         engine_state = await engine.invoke("engine_state")
-
+        try:
+            version, body = await new_version()
+        except Exception as e:
+            version, body = "", ""
         return {
             "core_version": core_version,
             "sys_version": settings.VERSION,
+            "version": version,
+            "body": body,
             "resources": engine_state.get("resources", {}),
             "state": engine_state.get("state", {}),
         }
@@ -40,3 +46,8 @@ async def get_dashboard_overview(current_user: User = Depends(get_current_user),
             status_code=500,
             detail=f"获取系统信息失败: {str(e)}"
         ) 
+    
+async def new_version():
+    res = requests.get('https://api.github.com/repos/TechHares/leek/releases/latest')
+    js = res.json()
+    return js['tag_name'][1:], js["body"]
