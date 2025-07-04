@@ -124,4 +124,3 @@ class ConfigManager:
 
 # 创建全局配置管理器实例
 config_manager = ConfigManager() 
-print(config_manager.config.model_dump())
