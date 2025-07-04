@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "leek-manager"
-version = "0.1.0"
+version = "1.0.2"
 description = "Leek Manager Service - 量化交易管理系统"
 authors = ["shenglin.li <764935704@qq.com>"]
 readme = "README.md"
@@ -44,6 +44,7 @@ python-multipart = "0.0.9"
 werkzeug = ">=3.0.1"
 alembic = "1.13.1"
 pymysql = ">=1.1.0"
+tomli = "^2.0.1"
 leek-core = { path = "../leek-core", develop = true }
 
 [tool.poetry.group.dev.dependencies]
