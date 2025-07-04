@@ -6,6 +6,7 @@ from app.api.v1.endpoints import config, auth, users, rbac, projects, executors,
 from app.middlewares.system_permission import system_permission_middleware
 import sys
 from app.core.engine import start_engine_manager
+from app.core.config_manager import config_manager
 import asyncio
 from contextlib import asynccontextmanager
 import os
@@ -79,7 +80,10 @@ app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
 
 # 静态文件服务
 static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
-if os.path.exists(static_dir):
+no_static = not os.path.exists(static_dir)
+if no_static:
+    logger.warning("前端未构建，将没有页面， 只有api服务...")
+else:
     app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="assets")
     app.mount("/favicon.ico", StaticFiles(directory=static_dir), name="favicon")
     app.mount("/img", StaticFiles(directory=os.path.join(static_dir, "img")), name="img")
@@ -92,7 +96,7 @@ async def health_check():
 @app.get("/{full_path:path}")
 async def serve_spa(full_path: str):
     # 如果是 API 请求，不处理
-    if full_path.startswith("api/"):
+    if full_path.startswith("api/") or no_static:
         raise HTTPException(status_code=404, detail="Not found")
     
     # 返回 index.html，让 Vue 路由处理

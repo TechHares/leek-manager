@@ -25,13 +25,14 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Office/Business :: Financial :: Investment",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Framework :: FastAPI",
 ]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11,<3.13"
 fastapi = "0.115.12"
 uvicorn = "0.27.1"
 pydantic = ">=2.1.4"
@@ -42,7 +43,7 @@ python-jose = "3.3.0"
 python-multipart = "0.0.9"
 werkzeug = ">=3.0.1"
 alembic = "1.13.1"
-mysqlclient = ">=2.2.1"
+pymysql = ">=1.1.0"
 leek-core = { path = "../leek-core", develop = true }
 
 [tool.poetry.group.dev.dependencies]
@@ -63,3 +64,37 @@ include = '\.pyi?$'
 [tool.isort]
 profile = "black"
 multi_line_output = 3 
+
+[[tool.poetry.source]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple/"
+priority = "primary"
+
+[[tool.poetry.source]]
+name = "huawei"
+url = "https://mirrors.huaweicloud.com/repository/pypi/simple/"
+priority = "supplemental"
+
+[[tool.poetry.source]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+priority = "supplemental"
+
+[[tool.poetry.source]]
+name = "tencent"
+url = "https://mirrors.cloud.tencent.com/pypi/simple/"
+priority = "supplemental"
+
+[[tool.poetry.source]]
+name = "douban"
+url = "https://pypi.douban.com/simple/"
+priority = "supplemental"
+
+[[tool.poetry.source]]
+name = "ustc"
+url = "https://pypi.mirrors.ustc.edu.cn/simple/"
+priority = "supplemental"
+
+[[tool.poetry.source]]
+name = "pypi"
+priority = "supplemental"

@@ -23,7 +23,11 @@ class DatabaseConfig(BaseModel):
         """Get database connection string."""
         if self.type == "sqlite":
             return f"sqlite:///{self.path}"
-        elif self.type in ["mysql", "clickhouse"]:
+        elif self.type == "mysql":
+            # 如果密码为空，则不包含密码部分
+            auth = f"{self.username}" if not self.password else f"{self.username}:{self.password}"
+            return f"mysql+pymysql://{auth}@{self.host}:{self.port}/{self.database}"
+        elif self.type == "clickhouse":
             # 如果密码为空，则不包含密码部分
             auth = f"{self.username}" if not self.password else f"{self.username}:{self.password}"
             return f"{self.type}://{auth}@{self.host}:{self.port}/{self.database}"
@@ -88,7 +92,9 @@ class ConfigManager:
 
         if config["type"] == "sqlite":
             return f"sqlite:///{config['path']}"
-        elif config["type"] in ["mysql", "clickhouse"]:
+        elif config["type"] == "mysql":
+            return f"mysql+pymysql://{config['username']}:{config['password']}@{config['host']}:{config['port']}/{config['database']}"
+        elif config["type"] == "clickhouse":
             # 如果密码为空，则不包含密码部分
             auth = f"{config['username']}" if not config.get('password') else f"{config['username']}:{config['password']}"
             return f"{config['type']}://{auth}@{config['host']}:{config['port']}/{config['database']}"
@@ -118,3 +124,4 @@ class ConfigManager:
 
 # 创建全局配置管理器实例
 config_manager = ConfigManager() 
+print(config_manager.config.model_dump())
