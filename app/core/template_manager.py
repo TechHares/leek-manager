@@ -82,9 +82,12 @@ class TemplateManager:
         classes = set()
         if directory_path not in sys.path:
                 sys.path.append(directory_path)
-        for root, _, files in os.walk(directory_path):
+        for root, dirs, files in os.walk(directory_path):
+            # 排除 __pycache__ 目录
+            dirs[:] = [d for d in dirs if d != '__pycache__']
+            logger.info(f"scan_directory: {root}")
             for file in files:
-                if file.endswith('.py') and not file.startswith('_'):
+                if file.endswith('.py') and not file.startswith('_') and not file.startswith('.'):
                     rel_path = os.path.relpath(root, directory_path)
                     module_path = os.path.join(rel_path, file[:-3]).replace(os.sep, '.')
                     if rel_path == '.':
