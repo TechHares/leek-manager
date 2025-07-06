@@ -20,7 +20,7 @@ from decimal import Decimal
 from datetime import datetime
 from app.models.position import Position
 from app.core.config_manager import config_manager
-from app.core.template_manager import template_manager
+from app.core.template_manager import leek_template_manager
 
 logger = get_logger(__name__)
 
@@ -321,8 +321,8 @@ class EngineManager:
         )
 
     async def add_client(self, instance_id: str, name: str) -> ProcessEngineClient:
+        await leek_template_manager.get_manager(int(instance_id))
         async with self._lock:
-            await template_manager.get_manager(int(instance_id))
             if instance_id in self.clients:
                 return self.clients[instance_id]
             # 1. 配置
