@@ -20,12 +20,12 @@ from decimal import Decimal
 from datetime import datetime
 from app.models.position import Position
 from app.core.config_manager import config_manager
+from app.core.template_manager import template_manager
 
 logger = get_logger(__name__)
 
 EVENTS = set([EventType.EXEC_ORDER_UPDATED, EventType.EXEC_ORDER_CREATED, EventType.ORDER_UPDATED,
               EventType.ORDER_CREATED, EventType.STRATEGY_SIGNAL, EventType.POSITION_UPDATE, EventType.POSITION_INIT])
-
 class EngineManager:
     def __init__(self):
         self.clients: Dict[str, ProcessEngineClient] = {}
@@ -322,6 +322,7 @@ class EngineManager:
 
     async def add_client(self, instance_id: str, name: str) -> ProcessEngineClient:
         async with self._lock:
+            await template_manager.get_manager(int(instance_id))
             if instance_id in self.clients:
                 return self.clients[instance_id]
             # 1. 配置
