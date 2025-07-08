@@ -173,7 +173,7 @@ def save_data(symbol, interval, rows, inst_type="SWAP", bar=None):
             if int(row[8]) == 1:  # 只保存已完成的K线
                 insert_data.append({
                     'market': 'okx',
-                    'timeframe': interval.lower(),
+                    'timeframe': interval,
                     'timestamp': int(row[0]),
                     'symbol': symbol.split("-")[0],
                     'quote_currency': quote_currency,
@@ -255,7 +255,7 @@ if __name__ == '__main__':
 """
 -- optimize table klines final
 -- ck简单校验K线数量
-with tsp as(SELECT arrayElement(array1, number) AS interval, arrayElement(array2, number) AS deta_ts FROM (select ['1m', '3m', '5m', '15m', '30m', '1h', '4h', '6h', '8h', '12h', '1d'] array1,[60000,180000,300000,900000,1800000,3600000,14400000,21600000,28800000,43200000,86400000] array2) a CROSS JOIN numbers(1, 11) AS n),
+with tsp as(SELECT arrayElement(array1, number) AS interval, arrayElement(array2, number) AS deta_ts FROM (select ['1m', '3m', '5m', '15m', '30m', '1H', '4H', '6H', '8H', '12H', '1D'] array1,[60000,180000,300000,900000,1800000,3600000,14400000,21600000,28800000,43200000,86400000] array2) a CROSS JOIN numbers(1, 11) AS n),
 r as (select market, timeframe, symbol, quote_currency, ins_type, min(timestamp) start,max(timestamp) end, count(*) act from  klines group by market, timeframe, symbol, quote_currency, ins_type),
 b as (select market, r.timeframe, symbol, quote_currency, ins_type, toDateTime(start/1000, 3),toDateTime(end/1000, 3), act, toInt64((end-start) / deta_ts) exp,deta_ts from r,tsp where r.timeframe=tsp.interval)
 
