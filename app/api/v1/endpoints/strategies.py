@@ -106,12 +106,22 @@ def update_strategy_state(
     db.refresh(strategy)
     client = engine_manager.get_client(project_id=project_id)
     if client:
-        if strategy_in:
-            client.send_action("update_strategy_state", instance_id=str(strategy_id), state=strategy_in)
-        else:
-            client.remove_strategy(strategy.id)
-            if strategy.is_enabled:
-                client.add_strategy(strategy.to_config())
+        client.send_action("update_strategy_state", instance_id=str(strategy_id), state=strategy_in)
+    return strategy
+
+@router.put("/strategies/{strategy_id}/restart", response_model=StrategyConfigOut)
+def restart_strategy(
+    strategy_id: int,
+    project_id: int = Depends(deps.get_project_id),
+    db: Session = Depends(deps.get_db)
+):
+    strategy = db.query(StrategyModel).filter(StrategyModel.id == strategy_id, StrategyModel.project_id == project_id).first()
+    if not strategy or not strategy.is_enabled:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    client = engine_manager.get_client(project_id=project_id)
+    if client:
+        client.remove_strategy(strategy.id)
+        client.add_strategy(strategy.to_config())
     return strategy
 
 

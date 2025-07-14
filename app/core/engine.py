@@ -6,6 +6,7 @@ import time
 from typing import Dict, List, Optional
 from leek_core.engine.process import ProcessEngineClient
 from leek_core.event import Event, EventType
+from leek_core.utils import thread_lock
 from app.models.project import Project
 from app.models.signal import Signal
 from app.models.order import ExecutionOrder, Order
@@ -109,6 +110,7 @@ class EngineManager:
             existing_position.is_closed = True
             existing_position.close_time = datetime.now()
 
+    @thread_lock()
     def handle_event(self, project_id: int, event: Event):
         logger.info(f"收到事件[{project_id}]: {event.event_type} {event.data}")
         if event.event_type == EventType.EXEC_ORDER_UPDATED:
@@ -156,6 +158,8 @@ class EngineManager:
                 Position.id == int(position.position_id)
             ).first()
             if existing_position:
+                if existing_position.is_closed:
+                    return
                 # 更新现有仓位
                 self.update_position(existing_position, position)
             else:
