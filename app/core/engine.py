@@ -151,28 +151,26 @@ class EngineManager:
 
         if event.event_type == EventType.POSITION_UPDATE:
             position = event.data
+            logger.info(f"收到仓位更新事件[{project_id}-{int(position.position_id)}]: {position}")
             with db_connect() as db:
                 # 查找是否存在该仓位
-                existing_position = db.query(Position).filter(
-                Position.project_id == project_id,
-                Position.id == int(position.position_id)
-            ).first()
-            if existing_position:
-                if existing_position.is_closed:
-                    return
-                # 更新现有仓位
-                self.update_position(existing_position, position)
-            else:
-                # 创建新仓位
-                new_position = self.convert_position(project_id, position)
-                db.add(new_position)
-            
-            db.commit()
-            client = self.get_client(str(project_id))
-            if client:
-                client.send_action('storage_strategy')
-                client.send_action('storage_postion')
-            return
+                existing_position = db.query(Position).filter(Position.project_id == project_id,Position.id == int(position.position_id)).first()
+                if existing_position:
+                    if existing_position.is_closed:
+                        return
+                    # 更新现有仓位
+                    self.update_position(existing_position, position)
+                else:
+                    # 创建新仓位
+                    new_position = self.convert_position(project_id, position)
+                    db.add(new_position)
+                
+                db.commit()
+                client = self.get_client(str(project_id))
+                if client:
+                    client.send_action('storage_strategy')
+                    client.send_action('storage_postion')
+                return
 
         if event.event_type == EventType.ORDER_UPDATED or event.event_type == EventType.POSITION_INIT:
             event.data = [event.data]
