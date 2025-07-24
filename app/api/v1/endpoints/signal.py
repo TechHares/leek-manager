@@ -67,10 +67,18 @@ async def get_signals(
     
     # 补充策略名称和模板名称
     for signal in signals:
-        strategy = strategies.get(signal.strategy_id)
-        if strategy:
-            signal.strategy_name = strategy.name
-            signal.strategy_template_name = strategy_templates.get(signal.strategy_class_name, signal.strategy_class_name)
+        try:
+            strategy = strategies.get(signal.strategy_id)
+            if strategy:
+                signal.strategy_name = strategy.name
+                signal.strategy_template_name = strategy_templates.get(signal.strategy_class_name, signal.strategy_class_name)
+            else:
+                signal.strategy_name = "Unknown Strategy"
+                signal.strategy_template_name = signal.strategy_class_name
+        except Exception as e:
+            # Log the error but don't fail the entire request
+            signal.strategy_name = "Error Loading Strategy"
+            signal.strategy_template_name = signal.strategy_class_name
     
     return signals
 
@@ -98,16 +106,24 @@ async def get_signal(
         raise HTTPException(status_code=404, detail="Signal not found")
         
     # 获取并补充策略信息
-    strategy = db.query(models.Strategy).filter(
-        models.Strategy.id == signal.strategy_instance_id
+    strategy = db.query(Strategy).filter(
+        Strategy.id == signal.strategy_id
     ).first()
     
-    if strategy:
-        signal.strategy_name = strategy.name
-        # 获取策略模板名称
-        strategy_templates = {
-            t.cls: t.name for t in leek_template_manager.get_strategy_by_project(project_id)
-        }
-        signal.strategy_template_name = strategy_templates.get(signal.strategy_class_name, signal.strategy_class_name)
+    try:
+        if strategy:
+            signal.strategy_name = strategy.name
+            # 获取策略模板名称
+            strategy_templates = {
+                t.cls: t.name for t in await leek_template_manager.get_strategy_by_project(project_id)
+            }
+            signal.strategy_template_name = strategy_templates.get(signal.strategy_class_name, signal.strategy_class_name)
+        else:
+            signal.strategy_name = "Unknown Strategy"
+            signal.strategy_template_name = signal.strategy_class_name
+    except Exception as e:
+        # Log the error but don't fail the entire request
+        signal.strategy_name = "Error Loading Strategy"
+        signal.strategy_template_name = signal.strategy_class_name
     
     return signal 
