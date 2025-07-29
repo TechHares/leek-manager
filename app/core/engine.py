@@ -22,6 +22,7 @@ from datetime import datetime
 from app.models.position import Position
 from app.core.config_manager import config_manager
 from app.core.template_manager import leek_template_manager
+from app.core.leek_loop import leek_loop
 
 logger = get_logger(__name__)
 
@@ -41,6 +42,7 @@ class EngineManager:
         client.register_handler("event", self.handle_event)
         client.register_handler("strategy_data", self.handle_strategy_data)
         client.register_handler("position_data", self.handle_position_data)
+        client.register_handler("position_image", self.position_image)
 
     def handle_strategy_data(self, project_id: int, strategy_id: str, data: dict):
         with db_connect() as db:
@@ -54,6 +56,15 @@ class EngineManager:
             project_config = db.query(ProjectConfig).filter(ProjectConfig.project_id == int(project_id)).first()
             project_config.position_data = data
             db.commit()
+    
+    def position_image(self, project_id: str, data: dict):
+        logger.info(f"收到仓位镜像: {project_id} {data}")
+        # 保存资产快照
+        try:
+            from app.service.asset_snapshot_service import save_asset_snapshot_from_position_image
+            save_asset_snapshot_from_position_image(int(project_id), data)
+        except Exception as e:
+            logger.error(f"保存资产快照失败: {str(e)}")
 
     def convert_position(self, project_id: int, position) -> Position:
         """转换仓位模型"""
@@ -166,10 +177,6 @@ class EngineManager:
                     db.add(new_position)
                 
                 db.commit()
-                client = self.get_client(str(project_id))
-                if client:
-                    client.send_action('storage_strategy')
-                    client.send_action('storage_postion')
                 return
 
         if event.event_type == EventType.ORDER_UPDATED or event.event_type == EventType.POSITION_INIT:
@@ -375,6 +382,11 @@ class EngineManager:
     def pong(self, instance_id: str):
         self.last_pong[instance_id] = time.time()
 
+    def storage_position_image(self):
+        """同步调用仓位镜像存储 - 用于调度器"""
+        for client in self.clients.values():
+            client.send_action('position_image')
+
     async def scan_projects(self):
         while True:
             config = config_manager.get_config()
@@ -423,8 +435,9 @@ class EngineManager:
                             project.engine_info = {"process_id": None}
                             db.commit()
                         else:
-                            client.send_action('storage_postion')
                             client.send_action('storage_strategy')
+                            position_data = await client.invoke('storage_postion')
+                            self.handle_position_data(instance_id, position_data)
             finally:
                 db.close()
             await asyncio.sleep(self.scan_interval)

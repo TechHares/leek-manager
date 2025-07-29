@@ -72,7 +72,7 @@ class SchedulerManager:
 
         if job_defaults is None:
             job_defaults = {
-                "coalesce": False,
+                "coalesce": True,  # 合并延迟的任务
                 "max_instances": 3,
                 "misfire_grace_time": 15,
             }

@@ -2,10 +2,12 @@ from fastapi import FastAPI, status, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from leek_core import engine
 from app.api.v1.endpoints import config, auth, users, rbac, projects, executors, datasources, position, strategies, signal, order, dashboard
 from app.middlewares.system_permission import system_permission_middleware
 import sys
-from app.core.engine import start_engine_manager
+from app.core.engine import engine_manager, start_engine_manager
+from app.core.scheduler import scheduler
 from app.core.config_manager import config_manager
 import asyncio
 from contextlib import asynccontextmanager
@@ -21,6 +23,8 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     # 启动时
     engine_task = asyncio.create_task(start_engine_manager())
+    # 启动调度器
+    scheduler.start()
     yield
     # 关闭时
     engine_task.cancel()
@@ -28,6 +32,8 @@ async def lifespan(app: FastAPI):
         await engine_task
     except asyncio.CancelledError:
         pass
+    # 关闭调度器
+    scheduler.shutdown()
 
 # 配置日志级别，减少 uvicorn 的日志输出
 logging.getLogger("uvicorn").setLevel(logging.ERROR)
@@ -73,6 +79,7 @@ app.include_router(projects.router, prefix="/api/v1", tags=["projects"])
 app.include_router(executors.router, prefix="/api/v1", tags=["executors"])
 app.include_router(datasources.router, prefix="/api/v1", tags=["datasources"])
 app.include_router(position.router, prefix="/api/v1", tags=["position"])
+
 app.include_router(strategies.router, prefix="/api/v1", tags=["strategies"])
 app.include_router(signal.router, prefix="/api/v1", tags=["signal"])
 app.include_router(order.router, prefix="/api/v1", tags=["order"])
@@ -106,3 +113,6 @@ async def serve_spa(full_path: str):
         return FileResponse(index_path)
     else:
         raise HTTPException(status_code=404, detail="Not found")
+
+scheduler.add_cron_job(func=engine_manager.storage_position_image, hour="*", minute="0", second="0", id="asset_snapshot_hourly", name="资产快照每小时生成任务")
+
