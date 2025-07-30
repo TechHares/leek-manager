@@ -14,21 +14,21 @@ from decimal import Decimal
 from pathlib import Path
 
 import tqdm
-from okx import MarketData
+from leek_core.adapts import OkxAdapter
 
 # 添加项目路径到sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from app.core.config_manager import config_manager
 
-api = MarketData.MarketAPI(domain="https://www.okx.com", flag="0", debug=False)
+api = OkxAdapter()
 
 
 def download_okx_kline(start_date, end_date, symbols=None, intervals=None, skip=0, inst_type="SWAP", bar=None):
     if intervals is None:
         intervals = ["1H", "4H", "6H", "12H", "1m", "3m", "5m", "15m", "30m", "1D"]
     if symbols is None or len(symbols) == 0:
-        tickers = api.get_tickers(instType=inst_type)
+        tickers = api.get_tickers(inst_type=inst_type)
         symbols = []
         if tickers and tickers["code"] == "0":
             for ticker in tickers["data"]:
@@ -103,7 +103,7 @@ def find_real_start_ts(symbol, interval, start_ts, end_ts, step):
 
 def get_data(symbol, interval, start_ts, n, t=5, bar=None):
     try:
-        candlesticks = api.get_history_candlesticks(symbol, before="%s" % (start_ts - 1), after="%s" % n,
+        candlesticks = api.get_history_candlesticks(inst_id=symbol, before="%s" % (start_ts - 1), after="%s" % n,
                                                     bar=interval)
         if candlesticks is None or candlesticks["code"] != "0":
             if candlesticks:
