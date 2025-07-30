@@ -209,3 +209,140 @@ async def new_version():
     js = res.json()
     print(js)
     return js['tag_name'][1:], js["body"]
+
+@router.get("/dashboard/position-status", response_model=Dict[str, Any])
+async def get_position_status(
+    current_user: User = Depends(get_current_user), 
+    db: Session = Depends(deps.get_db), 
+    project_id: int = Depends(get_project_id)
+):
+    """
+    获取仓位状态数据，包含：
+    1. 最新仓位数据
+    2. 24小时前的历史数据
+    3. 各项指标的变化率
+    """
+    try:
+        logger.info(f"Getting position status for project_id: {project_id}")
+        
+        # 获取最新数据
+        engine = engine_manager.get_client(project_id)
+        if not engine:
+            # 如果engine不存在，直接返回null
+            logger.info(f"No engine found for project_id: {project_id}, returning null")
+            return None
+            
+        try:
+            position_data = await engine.invoke("storage_postion")
+            current_data = {
+                "total_amount": Decimal(position_data.get('total_amount', '0')),
+                "activate_amount": Decimal(position_data.get('activate_amount', '0')),
+                "pnl": Decimal(position_data.get('pnl', '0')),
+                "friction": Decimal(position_data.get('friction', '0')),
+                "fee": Decimal(position_data.get('fee', '0')),
+                "virtual_pnl": Decimal(position_data.get('virtual_pnl', '0')),
+                "positions": position_data.get('positions', []),
+                "asset_count": position_data.get('asset_count', 0),
+                "timestamp": datetime.now()
+            }
+            
+            # 保存最新快照到数据库
+            snapshot = AssetSnapshot(
+                project_id=project_id,
+                snapshot_time=current_data["timestamp"],
+                activate_amount=current_data["activate_amount"],
+                pnl=current_data["pnl"],
+                friction=current_data["friction"],
+                fee=current_data["fee"],
+                total_amount=current_data["total_amount"],
+                virtual_pnl=current_data["virtual_pnl"],
+                position_amount=len(current_data["positions"])
+            )
+            db.add(snapshot)
+            db.commit()
+            
+        except Exception as e:
+            logger.error(f"Failed to get current position data: {str(e)}")
+            # 如果获取数据失败，也返回null
+            return None
+        
+        # 获取24小时前的历史数据
+        history_time = datetime.now() - timedelta(hours=24)
+        historical_snapshot = db.query(AssetSnapshot).filter(
+            AssetSnapshot.project_id == project_id,
+            AssetSnapshot.snapshot_time <= history_time
+        ).order_by(AssetSnapshot.snapshot_time.desc()).first()
+        
+        # 计算变化率
+        def calculate_change_rate(current, historical):
+            if historical and historical != 0:
+                return ((current - historical) / historical) * 100
+            return 0
+        
+        historical_data = None
+        if historical_snapshot:
+            historical_data = {
+                "total_amount": historical_snapshot.total_amount,
+                "activate_amount": historical_snapshot.activate_amount,
+                "pnl": historical_snapshot.pnl,
+                "friction": historical_snapshot.friction,
+                "fee": historical_snapshot.fee,
+                "virtual_pnl": historical_snapshot.virtual_pnl,
+                "timestamp": historical_snapshot.snapshot_time
+            }
+        
+        # 计算变化率
+        change_rates = {}
+        if historical_data:
+            change_rates = {
+                "total_amount_change": calculate_change_rate(current_data["total_amount"], historical_data["total_amount"]),
+                "activate_amount_change": calculate_change_rate(current_data["activate_amount"], historical_data["activate_amount"]),
+                "pnl_change": calculate_change_rate(current_data["pnl"], historical_data["pnl"]),
+                "friction_change": calculate_change_rate(current_data["friction"], historical_data["friction"]),
+                "fee_change": calculate_change_rate(current_data["fee"], historical_data["fee"]),
+                "virtual_pnl_change": calculate_change_rate(current_data["virtual_pnl"], historical_data["virtual_pnl"])
+            }
+        else:
+            change_rates = {
+                "total_amount_change": 0,
+                "activate_amount_change": 0,
+                "pnl_change": 0,
+                "friction_change": 0,
+                "fee_change": 0,
+                "virtual_pnl_change": 0
+            }
+        
+        result = {
+            "current": {
+                "total_amount": float(current_data["total_amount"]),
+                "activate_amount": float(current_data["activate_amount"]),
+                "pnl": float(current_data["pnl"]),
+                "friction": float(current_data["friction"]),
+                "fee": float(current_data["fee"]),
+                "virtual_pnl": float(current_data["virtual_pnl"]),
+                "positions": current_data["positions"],
+                "asset_count": current_data["asset_count"],
+                "position_count": len(current_data["positions"]),
+                "timestamp": current_data["timestamp"].isoformat()
+            },
+            "historical": {
+                "total_amount": float(historical_data["total_amount"]) if historical_data else 0,
+                "activate_amount": float(historical_data["activate_amount"]) if historical_data else 0,
+                "pnl": float(historical_data["pnl"]) if historical_data else 0,
+                "friction": float(historical_data["friction"]) if historical_data else 0,
+                "fee": float(historical_data["fee"]) if historical_data else 0,
+                "virtual_pnl": float(historical_data["virtual_pnl"]) if historical_data else 0,
+                "timestamp": historical_data["timestamp"].isoformat() if historical_data else None
+            },
+            "change_rates": change_rates
+        }
+        
+        logger.info(f"Position status data prepared successfully")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Position status error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取仓位状态失败: {str(e)}"
+        )
