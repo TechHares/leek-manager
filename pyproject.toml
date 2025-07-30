@@ -33,7 +33,7 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
-fastapi = "0.115.12"
+fastapi = "0.109.2"
 uvicorn = "0.27.1"
 pydantic = ">=2.1.4"
 pydantic-settings = ">=2.1.0"
@@ -42,17 +42,17 @@ sqlalchemy = "~=2.0.27"
 python-jose = "3.3.0"
 python-multipart = "0.0.9"
 werkzeug = ">=3.0.1"
-alembic = "1.13.1"
+alembic = "1.15.2"
 pymysql = ">=1.1.0"
 tomli = "^2.0.1"
 apscheduler = "^3.10.4"
 leek-core = { path = "../leek-core", develop = true }
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.0"
-black = "^23.0"
-isort = "^5.0"
-flake8 = "^6.0"
+pytest = "^7.4.4"
+black = "^24.4.2"
+isort = "^5.13.2"
+flake8 = "^7.0.0"
 
 [build-system]
 requires = ["poetry-core"]
