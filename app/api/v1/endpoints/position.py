@@ -127,8 +127,8 @@ async def get_position_setting(
         db.commit()
         db.refresh(config)
     if not config.position_setting:
-        return PositionSettingOut()
-    return PositionSettingOut(**config.position_setting)
+        return PositionSettingOut(positiondata=config.position_data)
+    return PositionSettingOut(**config.position_setting, positiondata=config.position_data)
 
 @router.put("/position/setting", response_model=PositionSettingOut)
 async def save_position_setting(
@@ -146,7 +146,7 @@ async def save_position_setting(
     client = engine_manager.get_client(project_id=project_id)
     if client:
         client.update_position_config(data.model_dump(), config.position_data)
-    return config.position_setting or {}
+    return PositionSettingOut(**config.position_setting, positiondata=config.position_data)
 
 @router.get("/templates/policy", response_model=List[TemplateResponse])
 async def list_policy_templates(

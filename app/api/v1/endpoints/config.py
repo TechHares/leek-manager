@@ -139,4 +139,7 @@ async def reset_position_state(
 ):
     client = engine_manager.get_client(project_id)
     if client:
-        client.send_action("reset_position_state")
+        state = await client.invoke("reset_position_state")
+        project_config = db.query(ProjectConfig).filter(ProjectConfig.project_id == int(project_id)).first()
+        project_config.position_data = state
+        db.commit()

@@ -26,7 +26,7 @@ class PositionSettingUpdate(PositionSettingBase):
     pass
 
 class PositionSettingOut(PositionSettingBase):
-    pass
+    positiondata: Optional[Dict[str, Any]] = None
 
 class PositionBase(BaseModel):
     strategy_id: int
