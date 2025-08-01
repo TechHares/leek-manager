@@ -11,7 +11,7 @@ from app.core.template_manager import leek_template_manager
 from app.core.engine import engine_manager
 router = APIRouter()
 @router.get("/strategies", response_model=List[StrategyConfigOut])
-def list_strategies(
+async def list_strategies(
     db: Session = Depends(deps.get_db),
     skip: int = 0,
     limit: int = 100,
@@ -26,7 +26,7 @@ def list_strategies(
     return strategies
 
 @router.post("/strategies", response_model=StrategyConfigOut)
-def create_strategy(
+async def create_strategy(
     strategy: StrategyConfigCreate,
     db: Session = Depends(deps.get_db_session),
     project_id: int = Depends(deps.get_project_id)
@@ -46,11 +46,11 @@ def create_strategy(
     if strategy_model.is_enabled:
         client = engine_manager.get_client(project_id=project_id)
         if client:
-            client.add_strategy(strategy_model.to_config())
+            await client.add_strategy(strategy_model.dumps_map())
     return strategy_model
 
 @router.get("/strategies/{strategy_id}", response_model=StrategyConfigOut)
-def get_strategy(
+async def get_strategy(
     strategy_id: int,
     db: Session = Depends(deps.get_db)
 ):
@@ -60,7 +60,7 @@ def get_strategy(
     return strategy
 
 @router.put("/strategies/{strategy_id}", response_model=StrategyConfigOut)
-def update_strategy(
+async def update_strategy(
     strategy_id: int,
     strategy_in: StrategyConfigUpdate,
     project_id: int = Depends(deps.get_project_id),
@@ -85,14 +85,14 @@ def update_strategy(
     client = engine_manager.get_client(project_id=project_id)
     if client:
         if strategy.is_enabled:
-            client.update_strategy(strategy.to_config())
+            await client.update_strategy(strategy.dumps_map())
         else:
-            client.remove_strategy(strategy.id)
+            await client.remove_strategy(strategy.id)
     return strategy
 
 
 @router.put("/strategies/{strategy_id}/state", response_model=StrategyConfigOut)
-def update_strategy_state(
+async   def update_strategy_state(
     strategy_id: int,
     strategy_in: Dict[str, Any],
     project_id: int = Depends(deps.get_project_id),
@@ -106,11 +106,11 @@ def update_strategy_state(
     db.refresh(strategy)
     client = engine_manager.get_client(project_id=project_id)
     if client:
-        client.send_action("update_strategy_state", instance_id=str(strategy_id), state=strategy_in)
+        await client.invoke("update_strategy_state", instance_id=str(strategy_id), state=strategy_in)
     return strategy
 
 @router.put("/strategies/{strategy_id}/restart", response_model=StrategyConfigOut)
-def restart_strategy(
+async def restart_strategy(
     strategy_id: int,
     project_id: int = Depends(deps.get_project_id),
     db: Session = Depends(deps.get_db)
@@ -120,13 +120,13 @@ def restart_strategy(
         raise HTTPException(status_code=404, detail="Strategy not found")
     client = engine_manager.get_client(project_id=project_id)
     if client:
-        client.remove_strategy(strategy.id)
-        client.add_strategy(strategy.to_config())
+        await client.remove_strategy(strategy.id)
+        await client.add_strategy(strategy.dumps_map())
     return strategy
 
 
 @router.delete("/strategies/{strategy_id}")
-def delete_strategy(
+async def delete_strategy(
     strategy_id: int,
     project_id: int = Depends(deps.get_project_id),
     db: Session = Depends(deps.get_db)
@@ -138,7 +138,7 @@ def delete_strategy(
     db.commit()
     client = engine_manager.get_client(project_id=project_id)
     if client:
-        client.remove_strategy(strategy.id)
+        await client.remove_strategy(strategy.id)
     return {"status": "success"}
 
 @router.get("/templates/strategy", response_model=List[TemplateResponse])

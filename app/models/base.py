@@ -1,15 +1,13 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, DateTime, String, JSON, Boolean
+from sqlalchemy import Column, DateTime, String, Boolean, BigInteger, JSON
 from datetime import datetime, UTC
-from leek_core.base import  load_class_from_str
-from leek_core.models import  LeekComponentConfig 
 
 Base = declarative_base()
 
 class BaseModel(Base):
     __abstract__ = True
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
     updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)) 
     
@@ -20,14 +18,9 @@ class ComponentModel(BaseModel):
     description = Column(String(500), nullable=True)
     class_name = Column(String(200), nullable=False)
     params = Column(JSON, nullable=True)
-    project_id = Column(Integer, nullable=False)
+    project_id = Column(BigInteger, nullable=False)
     is_enabled = Column(Boolean, default=True, nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
 
-    def to_config(self) -> LeekComponentConfig:
-        return LeekComponentConfig(
-            instance_id=str(self.id),
-            name=self.name,
-            cls=load_class_from_str(self.class_name),
-            config=self.params
-        )
+    def dumps_map(self) -> dict:
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}

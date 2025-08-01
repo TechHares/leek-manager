@@ -3,6 +3,7 @@
 提供统一的调度接口，支持定时任务、间隔任务、一次性任务等
 """
 
+import asyncio
 from typing import Any, Callable, Dict, List, Optional, Union
 from datetime import datetime, timedelta
 from functools import wraps
@@ -10,13 +11,15 @@ import threading
 from contextlib import contextmanager
 from leek_core.utils import get_logger
 
-from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.executors.pool import ThreadPoolExecutor, ProcessPoolExecutor
+from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, JobExecutionEvent
 
 logger = get_logger(__name__)
@@ -31,12 +34,11 @@ class SchedulerManager:
         executors: Optional[Dict[str, Any]] = None,
         job_defaults: Optional[Dict[str, Any]] = None,
         timezone: str = "Asia/Shanghai",
-        daemon: bool = True,
     ):
-        self._scheduler: Optional[BackgroundScheduler] = None
+        self._scheduler: Optional[AsyncIOScheduler] = None
         self._job_count = 0
         self._running = False
-        self.initialize(jobstores, executors, job_defaults, timezone, daemon)
+        self.initialize(jobstores, executors, job_defaults, timezone)
 
     def initialize(
         self,
@@ -44,7 +46,6 @@ class SchedulerManager:
         executors: Optional[Dict[str, Any]] = None,
         job_defaults: Optional[Dict[str, Any]] = None,
         timezone: str = "Asia/Shanghai",
-        daemon: bool = True,
     ) -> None:
         """
         初始化调度器
@@ -66,24 +67,22 @@ class SchedulerManager:
 
         if executors is None:
             executors = {
-                "default": ThreadPoolExecutor(20),
-                "processpool": ProcessPoolExecutor(5),
+                "default": AsyncIOExecutor(),  # 使用 AsyncIOExecutor 作为默认执行器
             }
 
         if job_defaults is None:
             job_defaults = {
                 "coalesce": True,  # 合并延迟的任务
-                "max_instances": 3,
-                "misfire_grace_time": 15,
+                "max_instances": 1,
+                "misfire_grace_time": 5,
             }
 
         # 创建调度器
-        self._scheduler = BackgroundScheduler(
+        self._scheduler = AsyncIOScheduler(
             jobstores=jobstores,
             executors=executors,
             job_defaults=job_defaults,
             timezone=timezone,
-            daemon=daemon,
         )
 
         # 添加事件监听器
@@ -376,10 +375,40 @@ class SchedulerManager:
         try:
             logger.info(f"开始立即运行任务: {job_id}")
             result = job.func(*job.args, **job.kwargs)
+            
+            # 检查是否是异步函数
+            if asyncio.iscoroutine(result):
+                logger.warning(f"任务 {job_id} 是异步函数，但使用了同步调用方式")
+            
             logger.info(f"任务立即运行完成: {job_id}")
             return result
         except Exception as e:
             logger.error(f"任务立即运行失败: {job_id}, 错误: {str(e)}")
+            raise
+
+    async def run_job_async(self, job_id: str) -> None:
+        """异步立即运行任务"""
+        if self._scheduler is None:
+            raise RuntimeError("调度器未初始化")
+
+        # 获取任务
+        job = self._scheduler.get_job(job_id)
+        if job is None:
+            raise ValueError(f"任务不存在: {job_id}")
+        
+        # 执行任务函数
+        try:
+            logger.info(f"开始异步立即运行任务: {job_id}")
+            result = job.func(*job.args, **job.kwargs)
+            
+            # 如果是异步函数，等待执行完成
+            if asyncio.iscoroutine(result):
+                result = await result
+            
+            logger.info(f"异步任务立即运行完成: {job_id}")
+            return result
+        except Exception as e:
+            logger.error(f"异步任务立即运行失败: {job_id}, 错误: {str(e)}")
             raise
 
     def is_running(self) -> bool:

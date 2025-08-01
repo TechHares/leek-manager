@@ -43,7 +43,7 @@ def list_datasources(
     return datasources
 
 @router.post("/datasources", response_model=DataSource)
-def create_datasource(
+async def create_datasource(
     datasource: DataSourceBase,
     db: Session = Depends(deps.get_db_session),
     project_id: int = Depends(get_project_id)
@@ -55,7 +55,7 @@ def create_datasource(
     db.refresh(datasource_model)
     client = engine_manager.get_client(project_id=project_id)
     if client:
-        client.add_data_source(datasource_model.to_config())
+        await client.add_data_source(datasource_model.dumps_map())
     return datasource_model
 
 @router.get("/datasources/{datasource_id}", response_model=DataSource)
@@ -71,7 +71,7 @@ def get_datasource(
     return datasource
 
 @router.put("/datasources/{datasource_id}", response_model=DataSource)
-def update_datasource(
+async def update_datasource(
     *,
     db: Session = Depends(deps.get_db),
     datasource_id: int,
@@ -89,13 +89,13 @@ def update_datasource(
     client = engine_manager.get_client(project_id=project_id)
     if client:
         if datasource.is_enabled:
-            client.update_data_source(datasource.to_config())
+            await client.update_data_source(datasource.dumps_map())
         else:
-            client.remove_data_source(datasource.id)
+            await client.remove_data_source(datasource.id)
     return datasource
 
 @router.delete("/datasources/{datasource_id}")
-def delete_datasource(
+async def delete_datasource(
     *,
     db: Session = Depends(deps.get_db),
     project_id: int = Depends(get_project_id),
@@ -108,7 +108,7 @@ def delete_datasource(
     db.commit()
     client = engine_manager.get_client(project_id=project_id)
     if client:
-        client.remove_data_source(datasource.id)
+        await client.remove_data_source(datasource.id)
     return {"status": "success"}
 
 @router.get("/templates/datasource")

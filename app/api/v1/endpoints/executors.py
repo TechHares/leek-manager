@@ -43,7 +43,7 @@ def list_executors(
     return executors
 
 @router.post("/executor/traders", response_model=Executor)
-def create_executor(
+async def create_executor(
     executor: ExecutorBase,
     db: Session = Depends(deps.get_db_session),
     project_id: int = Depends(get_project_id)
@@ -58,11 +58,11 @@ def create_executor(
     db.refresh(executor_model)
     client = engine_manager.get_client(project_id=project_id)
     if client:
-        client.add_executor(executor_model.to_config())
+            await client.add_executor(executor_model.dumps_map())
     return executor_model
 
 @router.get("/executor/traders/{executor_id}", response_model=Executor)
-def get_executor(
+async def get_executor(
     *,
     db: Session = Depends(deps.get_db),
     project_id: int = Depends(get_project_id),
@@ -77,7 +77,7 @@ def get_executor(
     return executor
 
 @router.put("/executor/traders/{executor_id}", response_model=Executor)
-def update_executor(
+async def update_executor(
     *,
     db: Session = Depends(deps.get_db),
     executor_id: int,
@@ -99,11 +99,14 @@ def update_executor(
     db.refresh(executor)
     client = engine_manager.get_client(project_id=project_id)
     if client:
-        client.update_executor(executor.to_config())
+        if executor.is_enabled:
+            await client.update_executor(executor.dumps_map())
+        else:
+            await client.remove_executor(executor.id)
     return executor
 
 @router.delete("/executor/traders/{executor_id}")
-def delete_executor(
+async def delete_executor(
     *,
     db: Session = Depends(deps.get_db),
     project_id: int = Depends(get_project_id),
@@ -120,7 +123,7 @@ def delete_executor(
     db.commit()
     client = engine_manager.get_client(project_id=project_id)
     if client:
-        client.remove_executor(executor.id)
+        await client.remove_executor(executor.id)
     return {"status": "success"}
 
 @router.get("/templates/executor", response_model=List[TemplateResponse])

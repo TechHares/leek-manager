@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, JSON
+from sqlalchemy import Column, Integer, String, Boolean, JSON, BigInteger
 from sqlalchemy.orm import relationship
 
 from app.models.base import BaseModel
@@ -8,7 +8,7 @@ class Project(BaseModel):
 
     name = Column(String(100), nullable=False, index=True)
     description = Column(String(500))
-    created_by = Column(Integer, nullable=False)
+    created_by = Column(BigInteger, nullable=False)
     is_deleted = Column(Boolean, default=False)
     engine_info = Column(JSON, nullable=True)
 

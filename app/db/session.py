@@ -8,30 +8,58 @@ import subprocess
 import os
 from pathlib import Path
 import threading
+import logging
+
+logger = logging.getLogger(__name__)
+
+# 全局引擎实例
+_engine = None
+_engine_lock = threading.Lock()
 
 def get_engine():
-    config = config_manager.get_config()
-    if not config["is_configured"]:
-        return None
+    global _engine
+    if _engine is not None:
+        return _engine
     
-    # 使用业务数据库配置
-    db_config = config["business_db"]
-    if not db_config:
-        return None
+    with _engine_lock:
+        if _engine is not None:
+            return _engine
+            
+        config = config_manager.get_config()
+        if not config["is_configured"]:
+            return None
         
-    database_url = config_manager.get_connection_string("business_db")
-    if db_config["type"] == "sqlite":
-        connect_args = {"check_same_thread": False}
-        _engine = create_engine(database_url, connect_args=connect_args)
-    else:
-        _engine = create_engine(
-            database_url,
-            pool_size=20,
-            max_overflow=25,
-            pool_timeout=30,
-            pool_recycle=1800,
-        )
-    return _engine
+        # 使用业务数据库配置
+        db_config = config["business_db"]
+        if not db_config:
+            return None
+            
+        database_url = config_manager.get_connection_string("business_db")
+        if db_config["type"] == "sqlite":
+            connect_args = {"check_same_thread": False}
+            _engine = create_engine(
+                database_url, 
+                connect_args=connect_args,
+                # 为SQLite添加连接池配置
+                pool_size=20,
+                max_overflow=30,
+                pool_timeout=60,
+                pool_recycle=3600,
+                pool_pre_ping=True,
+                # 添加连接池事件监听
+                echo=False,
+            )
+        else:
+            _engine = create_engine(
+                database_url,
+                pool_size=30,
+                max_overflow=40,
+                pool_timeout=60,
+                pool_recycle=1800,
+                pool_pre_ping=True,
+            )
+        
+        return _engine
 
 def get_session_local():
     engine = get_engine()
@@ -110,8 +138,24 @@ def get_db() -> Optional[Session]:
     return _session_local()
 
 def reset_connection():
-    global _session_local
+    global _session_local, _engine
     _session_local = None
+    _engine = None
+
+def get_pool_status():
+    """获取连接池状态信息"""
+    engine = get_engine()
+    if engine is None:
+        return None
+    
+    pool = engine.pool
+    return {
+        "pool_size": pool.size(),
+        "checked_in": pool.checkedin(),
+        "checked_out": pool.checkedout(),
+        "overflow": pool.overflow(),
+        "invalid": pool.invalid(),
+    }
 
 @contextmanager
 def db_connect() -> Generator[Optional[Session], None, None]:
@@ -119,4 +163,5 @@ def db_connect() -> Generator[Optional[Session], None, None]:
     try:
         yield db
     finally:
-        db.close()
+        if db:
+            db.close()

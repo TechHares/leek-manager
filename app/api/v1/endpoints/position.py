@@ -145,7 +145,7 @@ async def save_position_setting(
     db.refresh(config)
     client = engine_manager.get_client(project_id=project_id)
     if client:
-        client.update_position_config(data.model_dump(), config.position_data)
+        await client.update_position_config(data.model_dump(), config.position_data)
     return PositionSettingOut(**config.position_setting, positiondata=config.position_data)
 
 @router.get("/templates/policy", response_model=List[TemplateResponse])

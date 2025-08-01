@@ -93,7 +93,7 @@ async def get_dashboard_asset(
         asset_snapshots = asset_snapshots_query.all()
         engine = engine_manager.get_client(project_id)
         if not_end_time and engine:
-            position_data = await engine.invoke("storage_postion")
+            position_data = await engine.invoke("get_position_state")
             # 从数据中提取资产信息
             activate_amount = Decimal(position_data.get('activate_amount', '0'))
             pnl = Decimal(position_data.get('pnl', '0'))
@@ -210,7 +210,7 @@ async def new_version():
     print(js)
     return js['tag_name'][1:], js["body"]
 
-@router.get("/dashboard/position-status", response_model=Dict[str, Any])
+@router.get("/dashboard/position-status")
 async def get_position_status(
     current_user: User = Depends(get_current_user), 
     db: Session = Depends(deps.get_db), 
@@ -233,7 +233,7 @@ async def get_position_status(
             return None
             
         try:
-            position_data = await engine.invoke("storage_postion")
+            position_data = await engine.invoke("get_position_state")
             current_data = {
                 "total_amount": Decimal(position_data.get('total_amount', '0')),
                 "activate_amount": Decimal(position_data.get('activate_amount', '0')),
@@ -245,22 +245,6 @@ async def get_position_status(
                 "asset_count": position_data.get('asset_count', 0),
                 "timestamp": datetime.now()
             }
-            
-            # 保存最新快照到数据库
-            snapshot = AssetSnapshot(
-                project_id=project_id,
-                snapshot_time=current_data["timestamp"],
-                activate_amount=current_data["activate_amount"],
-                pnl=current_data["pnl"],
-                friction=current_data["friction"],
-                fee=current_data["fee"],
-                total_amount=current_data["total_amount"],
-                virtual_pnl=current_data["virtual_pnl"],
-                position_amount=len(current_data["positions"])
-            )
-            db.add(snapshot)
-            db.commit()
-            
         except Exception as e:
             logger.error(f"Failed to get current position data: {str(e)}")
             # 如果获取数据失败，也返回null

@@ -21,19 +21,23 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("lifespan: 应用启动")
     # 启动时
     engine_task = asyncio.create_task(start_engine_manager())
     # 启动调度器
     scheduler.start()
+    logger.info("lifespan: 启动完成，进入yield")
     yield
+    logger.info("lifespan: 收到关闭信号，开始清理")
     # 关闭时
     engine_task.cancel()
     try:
         await engine_task
     except asyncio.CancelledError:
-        pass
+        logger.info("lifespan: 引擎任务已取消")
     # 关闭调度器
     scheduler.shutdown()
+    logger.info("lifespan: 应用关闭完成")
 
 # 配置日志级别，减少 uvicorn 的日志输出
 logging.getLogger("uvicorn").setLevel(logging.ERROR)
