@@ -32,7 +32,7 @@ EVENTS = set([EventType.EXEC_ORDER_UPDATED, EventType.EXEC_ORDER_CREATED, EventT
 class EngineManager:
     def __init__(self):
         self.clients: Dict[str, GrpcEngineClient] = {}
-        self.scan_interval = 10  # 秒
+        self.scan_interval = 20  # 秒
         self._lock = asyncio.Lock()
 
     def register_event_handlers(self, client: GrpcEngineClient):
@@ -179,15 +179,18 @@ class EngineManager:
             existing_position.total_amount = Decimal(str(position_data.get('total_amount', 0)))
         if 'total_sz' in position_data:
             existing_position.total_sz = Decimal(str(position_data.get('total_sz', 0)))
-        if 'sz' in position_data:
-            existing_position.sz = Decimal(str(position_data.get('sz', 0)))
         if 'executor_sz' in position_data:
             existing_position.executor_sz = position_data.get('executor_sz', {})
         if 'current_price' in position_data:
             existing_position.current_price = Decimal(str(position_data.get('current_price'))) if position_data.get('current_price') else None
 
+        sz = 0
+        executor_sz = position_data.get('executor_sz', {})
+        if executor_sz:
+            sz = sum(Decimal(v) for v in executor_sz.values())
+        existing_position.sz = sz
         # 更新最大值
-        existing_position.max_sz = max(existing_position.max_sz,  Decimal(str(position_data.get('sz', 0))))
+        existing_position.max_sz = max(existing_position.max_sz,  sz)
         existing_position.max_amount = max(existing_position.max_amount, Decimal(str(position_data.get('amount', 0))))
 
         existing_position.updated_at = datetime.now()
@@ -452,6 +455,11 @@ class EngineManager:
                                             except (ValueError, TypeError) as e:
                                                 logger.warning(f"无效的策略ID格式: {strategy_id_str}, 错误: {e}")
                                         db.commit()
+                                    # 仓位状态
+                                    data = await client.invoke('get_position_state')
+                                    project_config = db.query(ProjectConfig).filter(ProjectConfig.project_id == project.id).first()
+                                    project_config.position_data = data
+                                    db.commit()
                                 except Exception as e:
                                     logger.warning(f"Project {project.name} gRPC 连接异常: {e}")
                                     await self.remove_client(instance_id)
