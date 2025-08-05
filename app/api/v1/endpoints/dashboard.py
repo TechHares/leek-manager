@@ -20,6 +20,7 @@ import time
 from app.api import deps
 from datetime import datetime, timedelta
 from decimal import Decimal
+from app.utils.data_processor import get_daily_snapshots_from_hourly, calculate_performance_from_values
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -184,10 +185,63 @@ async def get_dashboard_asset(
                 "total_fee": float(item.total_fee) if item.total_fee else 0.0
             })
         
+        # 计算性能指标（使用日级数据处理）
+        daily_values = get_daily_snapshots_from_hourly(asset_snapshots_formatted, start_time, end_time)
+        performance_metrics = calculate_performance_from_values(daily_values, 365)
+        
+        # 计算上一时期的性能指标对比
+        # 根据当前时间范围计算上一时期
+        # 统一使用本地时区
+        if start_time.tzinfo is not None:
+            start_time = start_time.replace(tzinfo=None)
+        if end_time.tzinfo is not None:
+            end_time = end_time.replace(tzinfo=None)
+            
+        time_diff = end_time - start_time
+        previous_start = start_time - time_diff
+        previous_end = start_time
+        
+        # 获取上一时期的资产快照数据
+        previous_snapshots_query = db.query(AssetSnapshot).filter(
+            AssetSnapshot.project_id == project_id,
+            AssetSnapshot.snapshot_time >= previous_start,
+            AssetSnapshot.snapshot_time <= previous_end
+        ).order_by(AssetSnapshot.snapshot_time.asc())
+        
+        previous_snapshots = previous_snapshots_query.all()
+        previous_snapshots_formatted = []
+        for snapshot in previous_snapshots:
+            previous_snapshots_formatted.append({
+                "id": snapshot.id,
+                "snapshot_time": snapshot.snapshot_time.isoformat(),
+                "total_amount": float(snapshot.total_amount),
+                "activate_amount": float(snapshot.activate_amount),
+                "pnl": float(snapshot.pnl),
+                "fee": float(snapshot.fee),
+                "friction": float(snapshot.friction),
+                "virtual_pnl": float(snapshot.virtual_pnl),
+                "position_amount": snapshot.position_amount
+            })
+        
+        # 计算时期对比（使用日级数据处理）
+        current_daily_values = get_daily_snapshots_from_hourly(asset_snapshots_formatted, start_time, end_time)
+        previous_daily_values = get_daily_snapshots_from_hourly(previous_snapshots_formatted, previous_start, previous_end)
+        
+        # 计算时期对比
+        current_metrics = calculate_performance_from_values(current_daily_values, 365)
+        previous_metrics = calculate_performance_from_values(previous_daily_values, 365)
+        
+        period_comparison = {
+            "current": current_metrics,
+            "previous": previous_metrics
+        }
+        
         result = {
             "asset_snapshots": asset_snapshots_formatted,
             "strategy_pnl": strategy_pnl_formatted,
             "strategy_fee": strategy_fee_formatted,
+            "performance_metrics": performance_metrics,
+            "period_comparison": period_comparison,
             "time_range": {
                 "start_time": start_time.isoformat(),
                 "end_time": end_time.isoformat()
