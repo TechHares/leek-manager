@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Numeric, JSON, BigInteger
-from datetime import datetime, UTC
+from datetime import datetime
 from app.models.base import BaseModel
 
 class Position(BaseModel):

@@ -33,12 +33,12 @@ class ProjectConfigSchema(BaseModel):
     project_id: int
 
 class ProjectConfigIn(BaseModel):
-    project_id: int
     log_level: str = "INFO"
     log_format: str = "json"
     log_alarm: bool = False
     alert_config: List[AlarmConfig] = Field(default_factory=list)
     mount_dirs: list = Field(default_factory=list)
+    project_id: Optional[int] = None
 
 class ProjectConfigOut(ProjectConfigIn):
     id: int
@@ -129,7 +129,7 @@ async def restart_engine(
     db: Session = Depends(get_db)
 ):
     project = db.query(Project).filter(Project.id == project_id).first()
-    engine_manager.remove_client(str(project_id))
+    await engine_manager.remove_client(str(project_id))
     await engine_manager.add_client(str(project_id), project.name)
 
 @router.post("/config/reset_position_state")

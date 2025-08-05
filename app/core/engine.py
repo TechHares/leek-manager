@@ -21,13 +21,11 @@ from app.models.strategy import Strategy
 from decimal import Decimal
 from datetime import datetime
 from app.models.position import Position
+from app.models.balance_transaction import BalanceTransaction, TransactionType
 from app.core.config_manager import config_manager
 from app.core.template_manager import leek_template_manager
 
 logger = get_logger(__name__)
-
-EVENTS = set([EventType.EXEC_ORDER_UPDATED, EventType.EXEC_ORDER_CREATED, EventType.ORDER_UPDATED,
-              EventType.ORDER_CREATED, EventType.STRATEGY_SIGNAL, EventType.POSITION_UPDATE, EventType.POSITION_INIT])
 
 class EngineManager:
     def __init__(self):
@@ -45,6 +43,39 @@ class EngineManager:
         client.register_handler(EventType.STRATEGY_SIGNAL, self.handle_strategy_signal)
         client.register_handler(EventType.POSITION_UPDATE, self.handle_position_update)
         client.register_handler(EventType.POSITION_INIT, self.handle_order_updated)
+        client.register_handler(EventType.TRANSACTION, self.handle_transaction)
+
+    def handle_transaction(self, project_id: int, event):
+        """处理交易事件"""
+        data = event.data
+        
+        # 处理交易类型
+        transaction_type = TransactionType(int(data.get('type', 0)))
+        
+        # 处理金额字段，确保为 Decimal 类型
+        amount = Decimal(str(data.get('amount', 0)))
+        balance_before = Decimal(str(data.get('balance_before', 0)))
+        balance_after = Decimal(str(data.get('balance_after', 0)))
+        
+        transaction = BalanceTransaction(
+            project_id=project_id,
+            strategy_id=int(data.get('strategy_id')) if data.get('strategy_id') else None,
+            strategy_instance_id=str(data.get('strategy_instance_id')) if data.get('strategy_instance_id') else None,
+            position_id=int(data.get('position_id')) if data.get('position_id') else None,
+            order_id=int(data.get('order_id')) if data.get('order_id') else None,
+            signal_id=int(data.get('signal_id')) if data.get('signal_id') else None,
+            executor_id=str(data.get('executor_id')) if data.get('executor_id') else None,
+            asset_key=str(data.get('asset_key', '')),
+            transaction_type=transaction_type,
+            amount=amount,
+            balance_before=balance_before,
+            balance_after=balance_after,
+            description=str(data.get('desc', '')),
+        )
+        
+        with db_connect() as db:
+            db.add(transaction)
+            db.commit()
 
     def handle_exec_order_updated(self, project_id: int, event):
         """处理执行订单更新事件"""
@@ -320,7 +351,7 @@ class EngineManager:
                 
             # 创建 gRPC 客户端
             client = GrpcEngineClient(
-                instance_id, name, config_dict, event_hook=EVENTS
+                instance_id, name, config_dict
             )
             
             # 注册事件处理器

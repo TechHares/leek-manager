@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime, Numeric, Index, BigInteger
-from datetime import datetime, UTC
+from datetime import datetime
 from app.models.base import BaseModel
 
 class AssetSnapshot(BaseModel):

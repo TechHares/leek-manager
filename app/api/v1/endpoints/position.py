@@ -2,7 +2,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, cast, Boolean
-from datetime import datetime, UTC
+from datetime import datetime
 from app.db.session import get_db
 from app.models.project_config import ProjectConfig
 from app.models.position import Position
@@ -110,7 +110,7 @@ async def close_position(
     client = engine_manager.get_client(project_id=project_id)
     if not client or not await client.invoke("close_position", position_id=str(position.id)):
         position.is_closed = True
-        position.close_time = datetime.now(UTC)
+        position.close_time = datetime.now()
         db.commit()
         db.refresh(position)
     return position
@@ -145,7 +145,7 @@ async def save_position_setting(
     db.refresh(config)
     client = engine_manager.get_client(project_id=project_id)
     if client:
-        await client.update_position_config(data.model_dump(), config.position_data)
+        await client.update_position_config(data.model_dump(), None)
     return PositionSettingOut(**config.position_setting, positiondata=config.position_data)
 
 @router.get("/templates/policy", response_model=List[TemplateResponse])

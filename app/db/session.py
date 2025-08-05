@@ -36,7 +36,11 @@ def get_engine():
             
         database_url = config_manager.get_connection_string("business_db")
         if db_config["type"] == "sqlite":
-            connect_args = {"check_same_thread": False}
+            connect_args = {
+                "check_same_thread": False,
+                "timeout": 30,
+                "isolation_level": None  # 启用自动提交模式
+            }
             _engine = create_engine(
                 database_url, 
                 connect_args=connect_args,

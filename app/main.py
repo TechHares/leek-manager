@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from leek_core import engine
-from app.api.v1.endpoints import config, auth, users, rbac, projects, executors, datasources, position, strategies, signal, order, dashboard
+from app.api.v1.endpoints import config, auth, users, rbac, projects, executors, datasources, position, strategies, signal, order, dashboard, transaction
 from app.middlewares.system_permission import system_permission_middleware
 import sys
 from app.core.engine import engine_manager, start_engine_manager
@@ -87,6 +87,7 @@ app.include_router(position.router, prefix="/api/v1", tags=["position"])
 app.include_router(strategies.router, prefix="/api/v1", tags=["strategies"])
 app.include_router(signal.router, prefix="/api/v1", tags=["signal"])
 app.include_router(order.router, prefix="/api/v1", tags=["order"])
+app.include_router(transaction.router, prefix="/api/v1", tags=["transaction"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
 
 # 静态文件服务

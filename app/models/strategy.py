@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, JSON, DateTime
 from app.models.base import ComponentModel
-from datetime import datetime, UTC
+from datetime import datetime
 
 class Strategy(ComponentModel):
     __tablename__ = "strategies"
@@ -14,5 +14,5 @@ class Strategy(ComponentModel):
     info_fabricator_configs = Column(JSON, nullable=True)
     data = Column(JSON, nullable=True)
     
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
-    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
+    created_at = Column(DateTime, default=lambda: datetime.now())
+    updated_at = Column(DateTime, default=lambda: datetime.now(), onupdate=lambda: datetime.now())

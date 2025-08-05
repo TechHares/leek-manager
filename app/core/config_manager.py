@@ -22,7 +22,7 @@ class DatabaseConfig(BaseModel):
     def get_connection_string(self) -> str:
         """Get database connection string."""
         if self.type == "sqlite":
-            return f"sqlite:///{self.path}"
+            return f"sqlite:///{self.path}?check_same_thread=False"
         elif self.type == "mysql":
             # 如果密码为空，则不包含密码部分
             auth = f"{self.username}" if not self.password else f"{self.username}:{self.password}"
@@ -91,7 +91,7 @@ class ConfigManager:
             return None
 
         if config["type"] == "sqlite":
-            return f"sqlite:///{config['path']}"
+            return f"sqlite:///{config['path']}?check_same_thread=False"
         elif config["type"] == "mysql":
             return f"mysql+pymysql://{config['username']}:{config['password']}@{config['host']}:{config['port']}/{config['database']}"
         elif config["type"] == "clickhouse":

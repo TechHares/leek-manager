@@ -124,6 +124,23 @@ async def restart_strategy(
         await client.add_strategy(strategy.dumps_map())
     return strategy
 
+@router.delete("/strategies/{strategy_id}/instance/{instance_id}")
+async def delete_strategy_instance(
+    strategy_id: str,
+    instance_id: str,
+    project_id: int = Depends(deps.get_project_id),
+    db: Session = Depends(deps.get_db)
+):
+    strategy = db.query(StrategyModel).filter(StrategyModel.id == strategy_id, StrategyModel.project_id == project_id).first()
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    client = engine_manager.get_client(project_id=project_id)
+    if client:
+        data = await client.invoke("clear_strategy_state", strategy_id=strategy_id, instance_id=instance_id)
+        if str(strategy_id) in data:
+            strategy.data = data[str(strategy_id)]
+            db.commit()
+    return {"status": "success"}
 
 @router.delete("/strategies/{strategy_id}")
 async def delete_strategy(
