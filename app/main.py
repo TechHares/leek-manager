@@ -91,19 +91,29 @@ app.include_router(transaction.router, prefix="/api/v1", tags=["transaction"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
 app.include_router(performance.router, prefix="/api/v1", tags=["performance"])
 
-# 静态文件服务
+@app.get("/api/health")
+async def health_check():
+    return {"status": "healthy"}
+
+# 静态文件服务 - 必须在 SPA 路由之前定义
 static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
 no_static = not os.path.exists(static_dir)
 if no_static:
     logger.warning("前端未构建，将没有页面， 只有api服务...")
 else:
+    logger.info(f"静态文件目录: {static_dir}")
+    # 挂载静态文件目录
     app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="assets")
-    app.mount("/favicon.ico", StaticFiles(directory=static_dir), name="favicon")
     app.mount("/img", StaticFiles(directory=os.path.join(static_dir, "img")), name="img")
-
-@app.get("/api/health")
-async def health_check():
-    return {"status": "healthy"}
+    
+    # 专门处理 favicon.ico
+    @app.get("/favicon.ico")
+    async def get_favicon():
+        favicon_path = os.path.join(static_dir, "favicon.ico")
+        if os.path.exists(favicon_path):
+            return FileResponse(favicon_path)
+        else:
+            raise HTTPException(status_code=404, detail="Favicon not found")
 
 # 处理 Vue 路由 - 所有非 API 请求都返回 index.html
 @app.get("/{full_path:path}")
