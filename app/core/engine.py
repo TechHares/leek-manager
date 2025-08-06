@@ -533,8 +533,8 @@ class EngineManager:
             try:
                 logger.info(f"正在停止客户端: {instance_id}")
                 await client.stop()
-            except Exception as e:
-                logger.error(f"停止客户端 {instance_id} 时出错: {e}")
+            except Exception:
+                ...
         
         self.clients.clear()
         
