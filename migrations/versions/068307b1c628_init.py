@@ -233,6 +233,7 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=100), nullable=False),
     sa.Column('description', sa.String(length=500), nullable=True),
     sa.Column('created_by', sa.BigInteger(), nullable=False),
+    sa.Column('is_enabled', sa.Boolean(), nullable=False, default=True),
     sa.Column('is_deleted', sa.Boolean(), nullable=True),
     sa.Column('engine_info', sa.JSON(), nullable=True),
     sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), autoincrement=True, nullable=False),

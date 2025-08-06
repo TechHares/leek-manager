@@ -436,7 +436,7 @@ class EngineManager:
                 
                 db = get_db()
                 try:
-                    projects = db.query(Project).filter(Project.is_deleted == False).all()
+                    projects = db.query(Project).filter(Project.is_deleted == False, Project.is_enabled == True).all()
                     # 获取所有活跃项目的ID
                     active_project_ids = {str(project.id) for project in projects}
                     

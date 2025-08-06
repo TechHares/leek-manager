@@ -18,14 +18,17 @@ class ProjectBase(BaseModel):
 class ProjectCreate(ProjectBase):
     pass
 
-class ProjectUpdate(ProjectBase):
-    pass
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_enabled: Optional[bool] = None
 
 class ProjectResponse(ProjectBase):
     id: int
     created_at: datetime
     updated_at: datetime
     created_by: int
+    is_enabled: bool
     
     class Config:
         from_attributes = True
@@ -56,33 +59,7 @@ async def create_project(
     db.refresh(project)
     return project
 
-@router.put("/projects/{project_id}", response_model=ProjectResponse)
-async def update_project(
-    project_id: int,
-    project_data: ProjectUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """更新项目信息"""
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="项目不存在"
-        )
-    
-    if project.created_by != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="只有项目创建者或管理员可以更新项目"
-        )
-    
-    project.name = project_data.name
-    project.description = project_data.description
-    
-    db.commit()
-    db.refresh(project)
-    return project
+
 
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(
@@ -105,4 +82,37 @@ async def delete_project(
         )
     
     project.is_deleted = True
-    db.commit() 
+    db.commit()
+
+@router.patch("/projects/{project_id}", response_model=ProjectResponse)
+async def update_project_status(
+    project_id: int,
+    project_data: ProjectUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """更新项目状态"""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="项目不存在"
+        )
+    
+    if project.created_by != current_user.id and not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="只有项目创建者或管理员可以修改项目"
+        )
+    
+    # 只更新提供的字段
+    if project_data.name is not None:
+        project.name = project_data.name
+    if project_data.description is not None:
+        project.description = project_data.description
+    if project_data.is_enabled is not None:
+        project.is_enabled = project_data.is_enabled
+    
+    db.commit()
+    db.refresh(project)
+    return project 
