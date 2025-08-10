@@ -21,8 +21,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from app.core.config_manager import config_manager
 
-api = OkxAdapter()
+from leek_core.utils import setup_logging
 
+api = OkxAdapter()
 
 def download_okx_kline(start_date, end_date, symbols=None, intervals=None, skip=0, inst_type="SWAP", bar=None):
     if intervals is None:
@@ -39,6 +40,7 @@ def download_okx_kline(start_date, end_date, symbols=None, intervals=None, skip=
         bar.total = len(symbols)
         bar.refresh()
     n = 0
+    setup_logging(level="WARNING")
     for symbol in symbols:
         if bar:
             bar.update(1)
