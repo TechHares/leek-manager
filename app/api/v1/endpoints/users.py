@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-from app.db.session import get_db
+from app.api.deps import get_db_session
 from app.models.user import User
 from app.api.deps import get_current_user
 from app.schemas.user import UserCreate, UserUpdate, UserResponse
@@ -11,7 +11,7 @@ router = APIRouter()
 # Endpoints
 @router.get("/authorization/users", response_model=List[UserResponse])
 async def list_users(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ):
     """获取所有用户列表"""
@@ -25,7 +25,7 @@ async def list_users(
 @router.post("/authorization/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
     user_data: UserCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ):
     """创建新用户"""
@@ -71,7 +71,7 @@ async def create_user(
 async def update_user(
     user_id: int,
     user_data: UserUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ):
     """更新用户信息"""
@@ -131,7 +131,7 @@ async def update_user(
 @router.delete("/authorization/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ):
     """删除用户"""

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Dict
-from app.db.session import get_db
+from app.api.deps import get_db_session
 from app.models.rbac import Role
 from app.schemas.rbac import (
     RoleCreate,
@@ -15,7 +15,7 @@ router = APIRouter()
 @router.post("/authorization/roles", response_model=RoleResponse)
 async def create_role(
     role: RoleCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """创建新角色"""
     db_role = Role(**role.dict())
@@ -26,7 +26,7 @@ async def create_role(
 
 @router.get("/authorization/roles", response_model=List[RoleResponse])
 async def list_roles(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """获取所有角色"""
     return db.query(Role).all()
@@ -35,7 +35,7 @@ async def list_roles(
 async def update_role(
     role_id: int,
     role_update: RoleUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """更新角色信息"""
     db_role = db.query(Role).filter(Role.id == role_id).first()
@@ -53,7 +53,7 @@ async def update_role(
 @router.delete("/authorization/roles/{role_id}")
 async def delete_role(
     role_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """删除角色"""
     db_role = db.query(Role).filter(Role.id == role_id).first()

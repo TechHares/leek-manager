@@ -9,7 +9,7 @@ from typing import List, Optional, Dict
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import datetime
-from app.api.deps import get_project_id, get_db
+from app.api.deps import get_project_id, get_db_session
 from app.service.performance_service import performance_service
 from leek_core.utils import get_logger
 
@@ -22,7 +22,7 @@ async def get_project_performance(
     start_time: Optional[datetime] = Query(None, description="开始时间"),
     end_time: Optional[datetime] = Query(None, description="结束时间"),
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """获取项目整体性能指标"""
     if not project_id:
@@ -42,7 +42,7 @@ async def get_strategies_performance(
     start_time: Optional[datetime] = Query(None, description="开始时间"),
     end_time: Optional[datetime] = Query(None, description="结束时间"),
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """获取项目下所有策略的性能数据"""
     if not project_id:
@@ -62,7 +62,7 @@ async def get_equity_curve(
     start_time: Optional[datetime] = Query(None, description="开始时间"),
     end_time: Optional[datetime] = Query(None, description="结束时间"),
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """获取项目整体资产曲线数据"""
     if not project_id:
@@ -82,7 +82,7 @@ async def get_trade_statistics(
     start_time: Optional[datetime] = Query(None, description="开始时间"),
     end_time: Optional[datetime] = Query(None, description="结束时间"),
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """获取项目整体交易统计"""
     if not project_id:

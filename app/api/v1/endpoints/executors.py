@@ -22,7 +22,7 @@ router = APIRouter()
 
 @router.get("/executor/traders", response_model=List[Executor])
 def list_executors(
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_db_session),
     skip: Optional[int] = 0,
     limit: Optional[int] = 100,
     enable: Optional[bool] = Query(None),
@@ -64,7 +64,7 @@ async def create_executor(
 @router.get("/executor/traders/{executor_id}", response_model=Executor)
 async def get_executor(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_db_session),
     project_id: int = Depends(get_project_id),
     executor_id: int
 ):
@@ -79,7 +79,7 @@ async def get_executor(
 @router.put("/executor/traders/{executor_id}", response_model=Executor)
 async def update_executor(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_db_session),
     executor_id: int,
     project_id: int = Depends(get_project_id),
     executor_in: ExecutorUpdate
@@ -108,7 +108,7 @@ async def update_executor(
 @router.delete("/executor/traders/{executor_id}")
 async def delete_executor(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_db_session),
     project_id: int = Depends(get_project_id),
     executor_id: int
 ):

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.orm import Session
-from app.db.session import get_db
+from app.api.deps import get_db_session
 from app.models.project_config import ProjectConfig
 from app.models.project import Project
 from pydantic import BaseModel, Field
@@ -72,7 +72,7 @@ async def update_config(config: SaveConfigRequest):
 @router.get("/config", response_model=ProjectConfigOut)
 async def get_project_config(
     project_id: int = Header(..., description="项目ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     config = db.query(ProjectConfig).filter_by(project_id=project_id).first()
     if not config:
@@ -89,7 +89,7 @@ async def get_project_config(
 async def save_project_config(
     data: ProjectConfigIn,
     project_id: int = Header(..., description="项目ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     # 用 project_id 覆盖 data.project_id
     data.project_id = project_id
@@ -118,7 +118,7 @@ async def list_alarm_templates(
 @router.patch("/config/mount_dirs")
 async def refresh_mount_dirs(
     project_id: int = Header(..., description="项目ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     config = db.query(ProjectConfig).filter_by(project_id=project_id).first()
     await leek_template_manager.update_dirs(project_id, config.mount_dirs)
@@ -126,7 +126,7 @@ async def refresh_mount_dirs(
 @router.post("/config/restart")
 async def restart_engine(
     project_id: int = Header(..., description="项目ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     project = db.query(Project).filter(Project.id == project_id).first()
     await engine_manager.remove_client(str(project_id))
@@ -135,7 +135,7 @@ async def restart_engine(
 @router.post("/config/reset_position_state")
 async def reset_position_state(
     project_id: int = Header(..., description="项目ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     client = engine_manager.get_client(project_id)
     if client:

@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 _version_cache = [0, "未获取到", "..."]
 
 @router.get("/dashboard/overview", response_model=Dict[str, Any])
-async def get_dashboard_overview(current_user: User = Depends(get_current_user), db: Session = Depends(deps.get_db), project_id: int = Depends(get_project_id)):
+async def get_dashboard_overview(current_user: User = Depends(get_current_user), db: Session = Depends(deps.get_db_session), project_id: int = Depends(get_project_id)):
     try:
         engine = engine_manager.get_client(project_id)
         if engine is None:
@@ -63,7 +63,7 @@ async def get_dashboard_asset(
     start_time: Optional[datetime] = Query(None, description="开始时间"),
     end_time: Optional[datetime] = Query(None, description="结束时间"),
     current_user: User = Depends(get_current_user), 
-    db: Session = Depends(deps.get_db), 
+    db: Session = Depends(deps.get_db_session), 
     project_id: int = Depends(get_project_id)
 ):
     """
@@ -267,7 +267,7 @@ async def new_version():
 @router.get("/dashboard/position-status")
 async def get_position_status(
     current_user: User = Depends(get_current_user), 
-    db: Session = Depends(deps.get_db), 
+    db: Session = Depends(deps.get_db_session), 
     project_id: int = Depends(get_project_id)
 ):
     """

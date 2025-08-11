@@ -6,7 +6,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from app.core.config import settings
-from app.db.session import get_db
+from app.api.deps import get_db_session
 from sqlalchemy.orm import Session
 from app.models.user import User
 from app.api.deps import get_current_user
@@ -31,7 +31,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 @router.post("/tokens", response_model=Token)
-async def login_for_access_token(login_data: LoginRequest, db: Session = Depends(get_db)):
+async def login_for_access_token(login_data: LoginRequest, db: Session = Depends(get_db_session)):
     user = db.query(User).filter(User.username == login_data.username).first()
     if not user or not user.verify_password(login_data.password):
         raise HTTPException(

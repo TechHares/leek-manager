@@ -58,9 +58,12 @@ def get_engine():
                 database_url,
                 pool_size=30,
                 max_overflow=40,
-                pool_timeout=60,
-                pool_recycle=1800,
+                pool_timeout=5,
+                connect_timeout=10,
+                read_timeout=10,
+                pool_recycle=600,
                 pool_pre_ping=True,
+                isolation_level="AUTOCOMMIT",
             )
         
         return _engine

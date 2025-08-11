@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, cast, Boolean
 from datetime import datetime
-from app.db.session import get_db
+from app.api.deps import get_db_session
 from app.models.balance_transaction import BalanceTransaction, TransactionType
 from app.api.deps import get_project_id
 from app.schemas.common import PageResponse
@@ -20,7 +20,7 @@ async def list_transactions(
     page: int = 1,
     size: int = 20,
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """
     List transactions with filters and pagination
@@ -60,7 +60,7 @@ async def list_transactions(
 async def get_transaction(
     transaction_id: int,
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """
     Get transaction by ID

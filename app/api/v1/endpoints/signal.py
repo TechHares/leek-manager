@@ -14,7 +14,7 @@ router = APIRouter()
 
 @router.get("/signals", response_model=List[Signal])
 async def get_signals(
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_db_session),
     skip: int = 0,
     limit: int = 100,
     strategy_instance_id: Optional[int] = None,
@@ -85,7 +85,7 @@ async def get_signals(
 @router.get("/signals/{signal_id}", response_model=Signal)
 async def get_signal(
     signal_id: int,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_db_session),
     project_id: int = Depends(deps.get_project_id)
 ) -> Signal:
     """

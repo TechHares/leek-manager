@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, cast, Boolean
 from datetime import datetime
-from app.db.session import get_db
+from app.api.deps import get_db_session
 from app.models.project_config import ProjectConfig
 from app.models.position import Position
 from app.api.deps import get_project_id
@@ -30,7 +30,7 @@ async def list_positions(
     page: int = 1,
     size: int = 20,
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """
     List positions with filters and pagination
@@ -60,7 +60,7 @@ async def list_positions(
 async def get_position(
     position_id: int,
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """
     Get position details
@@ -75,7 +75,7 @@ async def update_position(
     position_id: int,
     position_update: PositionUpdate,
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """
     Update position information
@@ -96,7 +96,7 @@ async def update_position(
 async def close_position(
     position_id: int,
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     """
     Close a position
@@ -118,7 +118,7 @@ async def close_position(
 @router.get("/position/setting", response_model=PositionSettingOut)
 async def get_position_setting(
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     config = db.query(ProjectConfig).filter_by(project_id=project_id).first()
     if not config:
@@ -134,7 +134,7 @@ async def get_position_setting(
 async def save_position_setting(
     data: PositionSettingCreate,
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     config = db.query(ProjectConfig).filter_by(project_id=project_id).first()
     if not config:

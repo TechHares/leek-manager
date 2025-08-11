@@ -25,7 +25,7 @@ router = APIRouter()
 
 @router.get("/datasources", response_model=List[DataSource])
 def list_datasources(
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_db_session),
     skip: int = 0,
     limit: int = 100,
     project_id: int = Depends(get_project_id),
@@ -61,7 +61,7 @@ async def create_datasource(
 @router.get("/datasources/{datasource_id}", response_model=DataSource)
 def get_datasource(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_db_session),
     project_id: int = Depends(get_project_id),
     datasource_id: int
 ):
@@ -73,7 +73,7 @@ def get_datasource(
 @router.put("/datasources/{datasource_id}", response_model=DataSource)
 async def update_datasource(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_db_session),
     datasource_id: int,
     project_id: int = Depends(get_project_id),
     datasource_in: DataSourceUpdate
@@ -97,7 +97,7 @@ async def update_datasource(
 @router.delete("/datasources/{datasource_id}")
 async def delete_datasource(
     *,
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_db_session),
     project_id: int = Depends(get_project_id),
     datasource_id: int
 ):

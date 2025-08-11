@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.db.session import get_db
+from app.api.deps import get_db_session
 from app.models.project import Project
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
@@ -36,7 +36,7 @@ class ProjectResponse(ProjectBase):
 # Endpoints
 @router.get("/projects", response_model=List[ProjectResponse])
 async def list_projects(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ):
     """获取所有项目列表，按创建时间倒序"""
@@ -45,7 +45,7 @@ async def list_projects(
 @router.post("/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(
     project_data: ProjectCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ):
     """创建新项目"""
@@ -64,7 +64,7 @@ async def create_project(
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(
     project_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ):
     """删除项目"""
@@ -88,7 +88,7 @@ async def delete_project(
 async def update_project_status(
     project_id: int,
     project_data: ProjectUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ):
     """更新项目状态"""

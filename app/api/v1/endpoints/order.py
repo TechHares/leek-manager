@@ -2,7 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, cast, Boolean
-from app.db.session import get_db
+from app.api.deps import get_db_session
 from app.models.order import Order, ExecutionOrder
 from app.models.strategy import Strategy
 from app.models.execution import Executor
@@ -24,7 +24,7 @@ async def list_orders(
     page: int = 1,
     size: int = 20,
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     query = db.query(Order)
     query = query.filter(Order.project_id == project_id)
@@ -58,7 +58,7 @@ async def list_orders(
     return PageResponse(total=total, page=page, size=size, items=items)
 
 @router.get("/executor/orders/{order_id}", response_model=OrderOut)
-async def get_order_detail(order_id: int, project_id: int = Depends(get_project_id), db: Session = Depends(get_db)):
+async def get_order_detail(order_id: int, project_id: int = Depends(get_project_id), db: Session = Depends(get_db_session)):
     order = db.query(Order).filter(Order.id == order_id, Order.project_id == project_id).first()
     if not order:
         raise HTTPException(status_code=403, detail="Order not found")
@@ -84,7 +84,7 @@ async def list_execution_infos(
     page: int = 1,
     size: int = 20,
     project_id: int = Depends(get_project_id),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_session)
 ):
     query = db.query(ExecutionOrder).filter(ExecutionOrder.project_id == project_id)
     if signal_id:

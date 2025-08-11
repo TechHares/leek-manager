@@ -23,7 +23,14 @@ def get_db_session() -> Generator[Optional[Session], None, None]:
             detail="Database is not configured"
         )
     try:
+        # 供路由处理逻辑使用
         yield db
+        if db.in_transaction():
+            db.commit()
+    except Exception:
+        if db.in_transaction():
+            db.rollback()
+        raise
     finally:
         db.close()
 

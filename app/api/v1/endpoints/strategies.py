@@ -12,7 +12,7 @@ from app.core.engine import engine_manager
 router = APIRouter()
 @router.get("/strategies", response_model=List[StrategyConfigOut])
 async def list_strategies(
-    db: Session = Depends(deps.get_db),
+    db: Session = Depends(deps.get_db_session),
     skip: int = 0,
     limit: int = 100,
     project_id: int = Depends(deps.get_project_id),
@@ -52,7 +52,7 @@ async def create_strategy(
 @router.get("/strategies/{strategy_id}", response_model=StrategyConfigOut)
 async def get_strategy(
     strategy_id: int,
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(deps.get_db_session)
 ):
     strategy = db.query(StrategyModel).filter(StrategyModel.id == strategy_id).first()
     if not strategy:
@@ -64,7 +64,7 @@ async def update_strategy(
     strategy_id: int,
     strategy_in: StrategyConfigUpdate,
     project_id: int = Depends(deps.get_project_id),
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(deps.get_db_session)
 ):
     strategy = db.query(StrategyModel).filter(StrategyModel.id == strategy_id, StrategyModel.project_id == project_id).first()
     if not strategy:
@@ -96,7 +96,7 @@ async   def update_strategy_state(
     strategy_id: int,
     strategy_in: Dict[str, Any],
     project_id: int = Depends(deps.get_project_id),
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(deps.get_db_session)
 ):
     strategy = db.query(StrategyModel).filter(StrategyModel.id == strategy_id, StrategyModel.project_id == project_id).first()
     if not strategy:
@@ -113,7 +113,7 @@ async   def update_strategy_state(
 async def restart_strategy(
     strategy_id: int,
     project_id: int = Depends(deps.get_project_id),
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(deps.get_db_session)
 ):
     strategy = db.query(StrategyModel).filter(StrategyModel.id == strategy_id, StrategyModel.project_id == project_id).first()
     if not strategy or not strategy.is_enabled:
@@ -129,7 +129,7 @@ async def delete_strategy_instance(
     strategy_id: str,
     instance_id: str,
     project_id: int = Depends(deps.get_project_id),
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(deps.get_db_session)
 ):
     strategy = db.query(StrategyModel).filter(StrategyModel.id == strategy_id, StrategyModel.project_id == project_id).first()
     if not strategy:
@@ -146,7 +146,7 @@ async def delete_strategy_instance(
 async def delete_strategy(
     strategy_id: int,
     project_id: int = Depends(deps.get_project_id),
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(deps.get_db_session)
 ):
     strategy = db.query(StrategyModel).filter(StrategyModel.id == strategy_id, StrategyModel.project_id == project_id).first()
     if not strategy:
