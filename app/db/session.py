@@ -39,7 +39,6 @@ def get_engine():
             connect_args = {
                 "check_same_thread": False,
                 "timeout": 30,
-                "isolation_level": None  # 启用自动提交模式
             }
             _engine = create_engine(
                 database_url, 
@@ -59,7 +58,6 @@ def get_engine():
                 connect_args={
                     "connect_timeout": 10,
                     "read_timeout": 10,
-                    "isolation_level": "AUTOCOMMIT",
                 },
                 pool_size=30,
                 max_overflow=40,
