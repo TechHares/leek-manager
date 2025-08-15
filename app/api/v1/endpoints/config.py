@@ -143,3 +143,7 @@ async def reset_position_state(
         project_config = db.query(ProjectConfig).filter(ProjectConfig.project_id == int(project_id)).first()
         project_config.position_data = state
         db.commit()
+    else:
+        project_config = db.query(ProjectConfig).filter(ProjectConfig.project_id == int(project_id)).first()
+        project_config.position_data = {}
+        db.commit()

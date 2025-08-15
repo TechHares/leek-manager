@@ -13,6 +13,7 @@ from app.models.user import User
 from app.models.asset_snapshot import AssetSnapshot
 from app.models.position import Position
 from app.models.strategy import Strategy
+from app.models.project_config import ProjectConfig
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from leek_core import __version__ as core_version
@@ -278,16 +279,15 @@ async def get_position_status(
     """
     try:
         logger.info(f"Getting position status for project_id: {project_id}")
-        
+        db.query()
         # 获取最新数据
         engine = engine_manager.get_client(project_id)
-        if not engine:
-            # 如果engine不存在，直接返回null
-            logger.info(f"No engine found for project_id: {project_id}, returning null")
-            return None
-            
         try:
-            position_data = await engine.invoke("get_position_state")
+            if not engine:
+                project_config = db.query(ProjectConfig).filter(ProjectConfig.project_id == project_id).first()
+                position_data = project_config.position_data
+            else:
+                position_data = await engine.invoke("get_position_state")
             current_data = {
                 "total_amount": Decimal(position_data.get('total_amount', '0')),
                 "activate_amount": Decimal(position_data.get('activate_amount', '0')),

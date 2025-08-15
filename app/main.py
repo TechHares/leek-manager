@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from leek_core import engine
 from app.api.v1.endpoints import config, auth, users, rbac, projects, executors, datasources, position, strategies, signal, order, dashboard, transaction, performance
+from app.api.v1.endpoints import backtest as backtest_endpoints
 from app.middlewares.system_permission import system_permission_middleware
 import sys
 from app.core.engine import engine_manager, start_engine_manager
@@ -90,6 +91,7 @@ app.include_router(order.router, prefix="/api/v1", tags=["order"])
 app.include_router(transaction.router, prefix="/api/v1", tags=["transaction"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
 app.include_router(performance.router, prefix="/api/v1", tags=["performance"])
+app.include_router(backtest_endpoints.router, prefix="/api/v1", tags=["backtest"])
 
 @app.get("/api/health")
 async def health_check():

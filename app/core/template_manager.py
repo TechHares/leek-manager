@@ -352,12 +352,14 @@ class LeekTemplateManager(Generic[T]):
                     display_name = getattr(template, 'display_name', None) or template.__name__
                     init_params = getattr(template, 'init_params', [])
                     parameters = await self.convert_init_params(init_params)
+                    just_backtest = getattr(template, 'just_backtest', None)
                     responses.append(TemplateResponse(
                         cls=f"{template.__module__}|{template.__name__}",
                         name=display_name,
                         tag=dir_path,
                         desc=getattr(template, '__doc__', '') or '',
-                        parameters=parameters
+                        parameters=parameters,
+                        just_backtest=just_backtest
                     ))
         return responses
 

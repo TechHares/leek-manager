@@ -43,4 +43,5 @@ class TemplateResponse(BaseModel):
     name: str  # 显示名称
     tag: str  # 标签
     desc: str  # 描述
-    parameters: List[ParameterField] = Field(default_factory=list)  # 参数列表 
+    parameters: List[ParameterField] = Field(default_factory=list)  # 参数列表
+    just_backtest: bool | None = None  # 仅用于标识是否回测专用（执行器可用）

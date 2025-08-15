@@ -3,7 +3,7 @@ from app.models.base import BaseModel
 
 class ProjectConfig(BaseModel):
     __tablename__ = "project_configs"
-    project_id = Column(BigInteger, nullable=False, unique=True, index=True)
+    project_id = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False, unique=True, index=True)
     log_alarm = Column(Boolean, default=False)
     log_level = Column(String(20), default="INFO")
     log_format = Column(String(10), default="json")  # json/text

@@ -5,7 +5,7 @@ from app.models.base import BaseModel
 class AssetSnapshot(BaseModel):
     __tablename__ = "asset_snapshots"
 
-    project_id = Column(BigInteger, nullable=False, index=True, comment="项目ID")
+    project_id = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False, index=True, comment="项目ID")
     snapshot_time = Column(DateTime, nullable=False, index=True, comment="快照时间")
     
     # 资产相关字段

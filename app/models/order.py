@@ -5,11 +5,11 @@ from datetime import datetime
 class Order(BaseModel):
     __tablename__ = "orders"
 
-    position_id = Column(BigInteger, index=True, nullable=True, comment="仓位ID")
-    exec_order_id = Column(BigInteger, index=True, nullable=False, comment="执行订单ID")
-    signal_id = Column(BigInteger, index=True, nullable=False, comment="信号ID")
-    strategy_id = Column(BigInteger, index=True, nullable=False, comment="策略ID")
-    project_id = Column(BigInteger, nullable=False, index=True)
+    position_id = Column(BigInteger().with_variant(Integer, "sqlite"), index=True, nullable=True, comment="仓位ID")
+    exec_order_id = Column(BigInteger().with_variant(Integer, "sqlite"), index=True, nullable=False, comment="执行订单ID")
+    signal_id = Column(BigInteger().with_variant(Integer, "sqlite"), index=True, nullable=False, comment="信号ID")
+    strategy_id = Column(BigInteger().with_variant(Integer, "sqlite"), index=True, nullable=False, comment="策略ID")
+    project_id = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False, index=True)
     strategy_instant_id = Column(String(200), index=True, nullable=False, comment="策略实例ID")
     order_status = Column(String(32), nullable=False, comment="订单状态")
     order_time = Column(DateTime, nullable=False, comment="订单时间")
@@ -38,7 +38,7 @@ class Order(BaseModel):
     friction = Column(DECIMAL(36, 20), nullable=False, default=0, comment="摩擦成本")
     leverage = Column(DECIMAL(12, 8), nullable=False, default=1, comment="杠杆倍数")
 
-    executor_id = Column(BigInteger, nullable=True, comment="执行ID")
+    executor_id = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=True, comment="执行ID")
     trade_mode = Column(String(16), nullable=True, comment="交易模式")
     extra = Column(JSON, nullable=True, comment="附加信息")
     market_order_id = Column(String(200), nullable=True, comment="市场订单ID")
@@ -46,10 +46,10 @@ class Order(BaseModel):
 class ExecutionOrder(BaseModel):
     __tablename__ = "execution_orders"  # 执行订单
 
-    id = Column(BigInteger, primary_key=True, index=True)
-    project_id = Column(BigInteger, nullable=False)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    project_id = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
     signal_id = Column(String(64), nullable=False)
-    strategy_id = Column(BigInteger, nullable=False)
+    strategy_id = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
     strategy_instant_id = Column(String(64), nullable=False)
     target_executor_id = Column(String(64), nullable=False)
     execution_assets = Column(JSON, nullable=False)

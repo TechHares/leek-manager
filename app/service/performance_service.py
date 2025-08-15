@@ -64,9 +64,10 @@ class PerformanceAnalysisService:
         if start_time.tzinfo is not None:
             start_time = start_time.replace(tzinfo=None)
         
-        # 直接查询平仓订单，只查询需要的字段
+        # 直接查询平仓订单，只查询需要的字段（包含 position_id 便于计算持仓时长）
         query = db.query(
             Order.strategy_id,
+            Order.position_id,
             Order.pnl,
             Order.order_time,
             Order.finish_time
@@ -93,8 +94,26 @@ class PerformanceAnalysisService:
             closed_orders, start_time, end_time, project_id, db
         )
         
-        # 计算基础统计指标
-        strategy_stats = self._calculate_strategy_stats(closed_orders)
+        # 计算每个 position_id 的开仓时间，便于更准确计算持仓时长
+        position_ids = list({o.position_id for o in closed_orders if getattr(o, 'position_id', None) is not None})
+        pos_open_time_map: Dict[int, datetime] = {}
+        if position_ids:
+            open_orders = db.query(
+                Order.position_id,
+                Order.order_time
+            ).filter(
+                Order.project_id == project_id,
+                Order.is_open == True,
+                Order.position_id.in_(position_ids)
+            ).all()
+            for rec in open_orders:
+                # 如果同一 position_id 存在多条开仓记录，取最早时间
+                exist = pos_open_time_map.get(rec.position_id)
+                if exist is None or rec.order_time < exist:
+                    pos_open_time_map[rec.position_id] = rec.order_time
+
+        # 计算基础统计指标（传入开仓时间映射以获得更准确的平均持仓时间）
+        strategy_stats = self._calculate_strategy_stats(closed_orders, pos_open_time_map)
         
         # 获取策略名称映射
         strategy_names = {}
@@ -191,7 +210,7 @@ class PerformanceAnalysisService:
         
         return strategies_curves
     
-    def _calculate_strategy_stats(self, closed_orders: List[Order]):
+    def _calculate_strategy_stats(self, closed_orders: List[Order], pos_open_time_map: Optional[Dict[int, datetime]] = None):
         """计算策略基础统计指标"""
         strategy_stats = {}
         
@@ -216,8 +235,18 @@ class PerformanceAnalysisService:
                 strategy_stats[strategy_id]['losing_trades'] += 1
             
             # 计算持仓时间
-            if order.finish_time and order.order_time:
-                duration = (order.finish_time - order.order_time).total_seconds() / 3600
+            duration = None
+            if order.finish_time:
+                open_time = None
+                if pos_open_time_map is not None and getattr(order, 'position_id', None) in pos_open_time_map:
+                    open_time = pos_open_time_map.get(order.position_id)
+                # 如果能拿到对应 position 的开仓时间，按开仓->平仓计算
+                if open_time is not None:
+                    duration = (order.finish_time - open_time).total_seconds() / 3600
+                # 否则退化为使用该平仓订单的下单时间与完成时间计算（可能会被撮合为接近零）
+                elif order.order_time is not None:
+                    duration = (order.finish_time - order.order_time).total_seconds() / 3600
+            if duration is not None:
                 strategy_stats[strategy_id]['holding_times'].append(duration)
         
         # 计算最终指标

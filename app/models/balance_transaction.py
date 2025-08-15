@@ -27,12 +27,12 @@ class BalanceTransaction(BaseModel):
     记录所有影响账户余额的交易流水，包括交易、费用、盈亏、资金变动等。
     """
     __tablename__ = "balance_transactions"
-    project_id = Column(BigInteger, nullable=False, index=True, comment="项目ID")
-    strategy_id = Column(BigInteger, index=True, nullable=True, comment="策略ID")
+    project_id = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False, index=True, comment="项目ID")
+    strategy_id = Column(BigInteger().with_variant(Integer, "sqlite"), index=True, nullable=True, comment="策略ID")
     strategy_instance_id = Column(String(200), index=True, nullable=True, comment="策略实例ID")
-    position_id = Column(BigInteger, index=True, nullable=True, comment="仓位ID")
-    order_id = Column(BigInteger, index=True, nullable=True, comment="订单ID")
-    signal_id = Column(BigInteger, index=True, nullable=True, comment="信号ID")
+    position_id = Column(BigInteger().with_variant(Integer, "sqlite"), index=True, nullable=True, comment="仓位ID")
+    order_id = Column(BigInteger().with_variant(Integer, "sqlite"), index=True, nullable=True, comment="订单ID")
+    signal_id = Column(BigInteger().with_variant(Integer, "sqlite"), index=True, nullable=True, comment="信号ID")
     executor_id = Column(String(64), index=True, nullable=True, comment="执行器ID")
     asset_key = Column(String(64), nullable=False, comment="资产键值")
     

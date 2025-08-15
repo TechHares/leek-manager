@@ -6,6 +6,7 @@ from app.models.project import Project
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 from pydantic import BaseModel
+from app.core.engine import engine_manager
 from datetime import datetime
 
 router = APIRouter()
@@ -112,7 +113,10 @@ async def update_project_status(
         project.description = project_data.description
     if project_data.is_enabled is not None:
         project.is_enabled = project_data.is_enabled
-    
+    if project_data.is_enabled is True:
+        await engine_manager.add_client(str(project_id), project.name)
+    else:
+        await engine_manager.remove_client(str(project_id))
     db.commit()
     db.refresh(project)
     return project 

@@ -128,9 +128,16 @@ async def delete_executor(
 
 @router.get("/templates/executor", response_model=List[TemplateResponse])
 async def list_executor_templates(
-    project_id: int = Depends(get_project_id)
+    project_id: int = Depends(get_project_id),
+    just_backtest: bool | None = Query(None)
 ):
     """
     获取执行器模板列表
+    - just_backtest 未传：仅返回非回测专用（正式）
+    - just_backtest=true：仅返回回测专用
+    - just_backtest=false：仅返回非回测专用
     """
-    return await leek_template_manager.get_executors_by_project(project_id) 
+    items = await leek_template_manager.get_executors_by_project(project_id)
+    if just_backtest is None:
+        return [x for x in items if not getattr(x, 'just_backtest', False)]
+    return [x for x in items if (getattr(x, 'just_backtest', False) is True) == (just_backtest is True)]

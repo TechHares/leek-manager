@@ -67,7 +67,9 @@ class SchedulerManager:
 
         if executors is None:
             executors = {
-                "default": AsyncIOExecutor(),  # 使用 AsyncIOExecutor 作为默认执行器
+                "default": AsyncIOExecutor(),  # 轻量异步任务（非CPU密集）
+                "threadpool": ThreadPoolExecutor(max_workers=8),  # IO/中等CPU
+                "processpool": ProcessPoolExecutor(max_workers=4),  # CPU密集（如回测）
             }
 
         if job_defaults is None:
@@ -121,6 +123,7 @@ class SchedulerManager:
         kwargs: Optional[dict] = None,
         id: Optional[str] = None,
         name: Optional[str] = None,
+        executor: Optional[str] = None,
         **trigger_args,
     ) -> str:
         """
@@ -146,8 +149,8 @@ class SchedulerManager:
             self._job_count += 1
             id = f"job_{self._job_count}"
 
-        # 添加任务
-        job = self._scheduler.add_job(
+        # 添加任务（executor 仅在传入时设置）
+        job_kwargs = dict(
             func=func,
             trigger=trigger,
             args=args,
@@ -156,6 +159,9 @@ class SchedulerManager:
             name=name,
             **trigger_args,
         )
+        if executor is not None:
+            job_kwargs['executor'] = executor
+        job = self._scheduler.add_job(**job_kwargs)
 
         logger.info(f"任务已添加: {id} ({name or func.__name__})")
         return job.id
@@ -275,6 +281,7 @@ class SchedulerManager:
         kwargs: Optional[dict] = None,
         id: Optional[str] = None,
         name: Optional[str] = None,
+        executor: Optional[str] = None,
     ) -> str:
         """
         添加一次性任务
@@ -300,6 +307,7 @@ class SchedulerManager:
             kwargs=kwargs,
             id=id,
             name=name,
+            executor=executor,
         )
 
     def remove_job(self, job_id: str) -> None:

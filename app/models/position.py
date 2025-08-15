@@ -5,9 +5,9 @@ from app.models.base import BaseModel
 class Position(BaseModel):
     __tablename__ = "positions"
 
-    strategy_id = Column(BigInteger, index=True, nullable=False, comment="策略ID")
+    strategy_id = Column(BigInteger().with_variant(Integer, "sqlite"), index=True, nullable=False, comment="策略ID")
     strategy_instance_id = Column(String(200), index=True, nullable=False, comment="策略实例ID")
-    project_id = Column(BigInteger, nullable=False,index=True)
+    project_id = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False,index=True)
     symbol = Column(String(32), nullable=False, comment="交易标的")
     quote_currency = Column(String(16), nullable=False, comment="计价货币")
     ins_type = Column(String(16), nullable=False, comment="合约/现货类型")

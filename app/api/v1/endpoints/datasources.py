@@ -112,8 +112,18 @@ async def delete_datasource(
     return {"status": "success"}
 
 @router.get("/templates/datasource")
-async def get_datasource_templates(project_id: int = Depends(get_project_id)):
-    return await leek_template_manager.get_datasource_templates(project_id)
+async def get_datasource_templates(
+    project_id: int = Depends(get_project_id),
+    just_backtest: bool | None = Query(None)
+):
+    items = await leek_template_manager.get_datasource_templates(project_id)
+    # 过滤逻辑：
+    # - 未传时仅返回非回测专用（正式）
+    # - 传 true 时仅回测专用
+    # - 传 false 时仅非回测专用
+    if just_backtest is None:
+        return [x for x in items if not getattr(x, 'just_backtest', False)]
+    return [x for x in items if (getattr(x, 'just_backtest', False) is True) == (just_backtest is True)]
     
 @router.post("/templates/datasource")
 async def exe_datasource_templates(datasource: DataSourceExe, project_id: int = Depends(get_project_id)):

@@ -8,7 +8,7 @@ class Project(BaseModel):
 
     name = Column(String(100), nullable=False, index=True)
     description = Column(String(500))
-    created_by = Column(BigInteger, nullable=False)
+    created_by = Column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
     is_deleted = Column(Boolean, default=False) 
     is_enabled = Column(Boolean, default=False, nullable=False)
     engine_info = Column(JSON, nullable=True)
