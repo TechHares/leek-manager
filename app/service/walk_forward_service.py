@@ -19,6 +19,7 @@ from app.models.backtest_config import BacktestConfig
 from leek_core.utils import get_logger
 from leek_core.base import load_class_from_str, create_component
 from leek_core.data import DataSource
+from app.utils.series_codec import encode_time_series, encode_values
 
 logger = get_logger(__name__)
 
@@ -127,15 +128,18 @@ def _serialize_windows(windows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if isinstance(obj.get("test"), (list, tuple)) and len(obj.get("test")) == 2:
             te_s, te_e = obj["test"]
             obj["test"] = [_to_iso(te_s), _to_iso(te_e)]
-        # ensure equity series json-serializable
+        # encode equity series compactly
         if isinstance(obj.get("equity_values"), list):
             try:
-                obj["equity_values"] = [float(x) for x in obj["equity_values"]]
+                # ensure numeric type first
+                values = [float(x) for x in obj["equity_values"]]
+                obj["equity_values"] = encode_values(values)
             except Exception:
                 pass
         if isinstance(obj.get("equity_times"), list):
             try:
-                obj["equity_times"] = [int(x) for x in obj["equity_times"]]
+                times = [int(x) for x in obj["equity_times"]]
+                obj["equity_times"] = encode_time_series(times)
             except Exception:
                 pass
         serialized.append(obj)

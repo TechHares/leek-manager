@@ -34,6 +34,12 @@ def get_daily_snapshots_from_hourly(
         日级数值列表（0点数据）
     """
     try:
+        # 统一起止时间为本地 naive datetime，避免 aware/naive 比较异常
+        if start_date.tzinfo is not None:
+            start_date = start_date.replace(tzinfo=None)
+        if end_date.tzinfo is not None:
+            end_date = end_date.replace(tzinfo=None)
+
         # 创建日期范围
         daily_values = []
         
@@ -112,6 +118,26 @@ def get_daily_snapshots_from_hourly(
             
             current_date += timedelta(days=1)
         
+        # 清洗：避免0或负值引发极端回撤/波动
+        try:
+            # 找到第一个正值
+            first_pos_idx = None
+            for i, v in enumerate(daily_values):
+                if float(v) > 0:
+                    first_pos_idx = i
+                    break
+            if first_pos_idx is not None:
+                # 用第一个正值回填之前的0值
+                first_val = float(daily_values[first_pos_idx])
+                for i in range(first_pos_idx):
+                    daily_values[i] = first_val
+                # 向后前向填充<=0的值
+                for i in range(first_pos_idx + 1, len(daily_values)):
+                    if float(daily_values[i]) <= 0:
+                        daily_values[i] = float(daily_values[i - 1])
+        except Exception:
+            pass
+
         return daily_values
         
     except Exception as e:

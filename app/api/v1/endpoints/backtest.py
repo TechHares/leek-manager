@@ -14,6 +14,7 @@ from app.schemas.backtest import (
 from app.schemas.common import PageResponse
 from leek_core.utils import get_logger
 from app.core.scheduler import scheduler
+from app.utils.series_codec import maybe_decode_values, maybe_decode_times
 
 logger = get_logger(__name__)
 
@@ -224,10 +225,31 @@ async def delete_backtest_config(
 
 
 @router.get("/backtest/{task_id}", response_model=BacktestTaskOut)
-async def get_backtest_task(task_id: int, db: Session = Depends(deps.get_db_session)):
+async def get_backtest_task(
+    task_id: int,
+    db: Session = Depends(deps.get_db_session),
+    expand_series: bool = Query(False),
+):
     task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    # 按需展开压缩的时间/数值序列（仅详情接口，避免默认返回大 JSON）
+    if expand_series and isinstance(task.windows, list):
+        try:
+            decoded_windows = []
+            for w in task.windows:
+                if not isinstance(w, dict):
+                    decoded_windows.append(w)
+                    continue
+                obj = dict(w)
+                if "equity_values" in obj:
+                    obj["equity_values"] = maybe_decode_values(obj.get("equity_values"))
+                if "equity_times" in obj:
+                    obj["equity_times"] = maybe_decode_times(obj.get("equity_times"))
+                decoded_windows.append(obj)
+            task.windows = decoded_windows
+        except Exception:
+            ...
     # 冗余字段已在任务完成时落库，直接返回
     return task
 

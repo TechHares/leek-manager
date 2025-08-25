@@ -188,7 +188,45 @@ async def get_dashboard_asset(
         
         # 计算性能指标（使用日级数据处理）
         daily_values = get_daily_snapshots_from_hourly(asset_snapshots_formatted, start_time, end_time)
+        # 方案A扩展：将首尾日度点替换为区间内首尾快照（与曲线完全一致）
+        try:
+            if daily_values and asset_snapshots_formatted:
+                first_total_amount = float(asset_snapshots_formatted[0].get("total_amount", 0.0))
+                last_total_amount = float(asset_snapshots_formatted[-1].get("total_amount", 0.0))
+                # 覆盖首点
+                if first_total_amount is not None:
+                    daily_values[0] = float(first_total_amount)
+                # 覆盖尾点
+                if last_total_amount is not None:
+                    daily_values[-1] = float(last_total_amount)
+        except Exception:
+            pass
         performance_metrics = calculate_performance_from_values(daily_values, 365)
+        # 使用端点法基于首尾快照计算年化（与前端曲线口径完全一致）
+        try:
+            def _parse_time(ts):
+                if isinstance(ts, str):
+                    if ts.endswith('Z'):
+                        return datetime.fromisoformat(ts.replace('Z', '+00:00')).replace(tzinfo=None)
+                    return datetime.fromisoformat(ts)
+                return ts
+            if len(asset_snapshots_formatted) >= 2:
+                snaps_sorted = sorted(asset_snapshots_formatted, key=lambda x: x.get('snapshot_time'))
+                start_amt = float(snaps_sorted[0].get('total_amount', 0.0))
+                end_amt = float(snaps_sorted[-1].get('total_amount', 0.0))
+                if start_amt > 0:
+                    t1 = _parse_time(snaps_sorted[0].get('snapshot_time'))
+                    t2 = _parse_time(snaps_sorted[-1].get('snapshot_time'))
+                    days = max(1e-9, (t2 - t1).total_seconds() / 86400.0)
+                    total_ret = end_amt / start_amt - 1.0
+                    # 窗口过短使用线性年化，避免夸大（常见做法：<30天不采用复利外推）
+                    if days >= 30.0:
+                        ann = (1.0 + total_ret) ** (365.0 / days) - 1.0
+                    else:
+                        ann = total_ret * (365.0 / days)
+                    performance_metrics['annualized_return'] = float(ann)
+        except Exception:
+            pass
         
         # 计算上一时期的性能指标对比
         # 根据当前时间范围计算上一时期
@@ -226,11 +264,65 @@ async def get_dashboard_asset(
         
         # 计算时期对比（使用日级数据处理）
         current_daily_values = get_daily_snapshots_from_hourly(asset_snapshots_formatted, start_time, end_time)
+        # 同样应用方案A到当前时期数据（首尾覆盖）
+        try:
+            if current_daily_values and asset_snapshots_formatted:
+                first_total_amount = float(asset_snapshots_formatted[0].get("total_amount", 0.0))
+                last_total_amount = float(asset_snapshots_formatted[-1].get("total_amount", 0.0))
+                if first_total_amount is not None:
+                    current_daily_values[0] = float(first_total_amount)
+                if last_total_amount is not None:
+                    current_daily_values[-1] = float(last_total_amount)
+        except Exception:
+            pass
         previous_daily_values = get_daily_snapshots_from_hourly(previous_snapshots_formatted, previous_start, previous_end)
+        # 保持口径一致：上一时期也使用该时期的首尾快照覆盖
+        try:
+            if previous_daily_values and previous_snapshots_formatted:
+                prev_first = float(previous_snapshots_formatted[0].get("total_amount", 0.0))
+                prev_last = float(previous_snapshots_formatted[-1].get("total_amount", 0.0))
+                if prev_first is not None:
+                    previous_daily_values[0] = float(prev_first)
+                if prev_last is not None:
+                    previous_daily_values[-1] = float(prev_last)
+        except Exception:
+            pass
         
         # 计算时期对比
         current_metrics = calculate_performance_from_values(current_daily_values, 365)
         previous_metrics = calculate_performance_from_values(previous_daily_values, 365)
+        # 对时期对比也使用端点法覆盖年化
+        try:
+            if len(asset_snapshots_formatted) >= 2:
+                snaps_sorted = sorted(asset_snapshots_formatted, key=lambda x: x.get('snapshot_time'))
+                start_amt = float(snaps_sorted[0].get('total_amount', 0.0))
+                end_amt = float(snaps_sorted[-1].get('total_amount', 0.0))
+                if start_amt > 0:
+                    t1 = _parse_time(snaps_sorted[0].get('snapshot_time'))
+                    t2 = _parse_time(snaps_sorted[-1].get('snapshot_time'))
+                    days = max(1e-9, (t2 - t1).total_seconds() / 86400.0)
+                    total_ret = end_amt / start_amt - 1.0
+                    if days >= 30.0:
+                        ann = (1.0 + total_ret) ** (365.0 / days) - 1.0
+                    else:
+                        ann = total_ret * (365.0 / days)
+                    current_metrics['annualized_return'] = float(ann)
+            if len(previous_snapshots_formatted) >= 2:
+                prev_sorted = sorted(previous_snapshots_formatted, key=lambda x: x.get('snapshot_time'))
+                p_start = float(prev_sorted[0].get('total_amount', 0.0))
+                p_end = float(prev_sorted[-1].get('total_amount', 0.0))
+                if p_start > 0:
+                    pt1 = _parse_time(prev_sorted[0].get('snapshot_time'))
+                    pt2 = _parse_time(prev_sorted[-1].get('snapshot_time'))
+                    pdays = max(1e-9, (pt2 - pt1).total_seconds() / 86400.0)
+                    p_ret = p_end / p_start - 1.0
+                    if pdays >= 30.0:
+                        pann = (1.0 + p_ret) ** (365.0 / pdays) - 1.0
+                    else:
+                        pann = p_ret * (365.0 / pdays)
+                    previous_metrics['annualized_return'] = float(pann)
+        except Exception:
+            pass
         
         period_comparison = {
             "current": current_metrics,
