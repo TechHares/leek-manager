@@ -25,6 +25,24 @@ async def list_strategies(
     strategies = query.order_by(StrategyModel.created_at.desc()).offset(skip).limit(limit).all()
     return strategies
 
+@router.get("/strategies/instances")
+async def list_strategy_instances(
+    project_id: int = Depends(deps.get_project_id),
+    db: Session = Depends(deps.get_db_session)
+):
+    """
+    返回项目下各策略的实例列表（基于引擎上报的 runtime data）。
+    结构: [{ strategy_id, strategy_name, instances: [instance_id,...] }]
+    """
+    rows = db.query(StrategyModel).filter(StrategyModel.project_id == project_id).all()
+    result = []
+    for s in rows:
+        result.append({
+            "strategy_id": s.id,
+            "strategy_name": s.name,
+        })
+    return result
+
 @router.post("/strategies", response_model=StrategyConfigOut)
 async def create_strategy(
     strategy: StrategyConfigCreate,

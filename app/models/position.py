@@ -25,9 +25,9 @@ class Position(BaseModel):
     max_amount = Column(Numeric(36, 18), nullable=True, comment="最大价值")
     total_amount = Column(Numeric(36, 18), nullable=True, comment="累计价值")
     total_sz = Column(Numeric(36, 18), nullable=True, comment="累计仓位数量")
+    virtual_positions = Column(JSON, nullable=True, comment="虚拟仓位列表")
 
     executor_id = Column(String(64), index=True, nullable=True, comment="执行器ID")
-    is_fake = Column(Boolean, default=False, comment="是否是假仓位")
     
     pnl = Column(Numeric(36, 18), default=0, nullable=False, comment="盈亏")
     fee = Column(Numeric(36, 18), default=0, nullable=False, comment="手续费")

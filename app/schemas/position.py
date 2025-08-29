@@ -12,7 +12,6 @@ class PositionSettingBase(BaseModel):
     max_symbol_ratio: str = "0.3"
     max_amount: str = "1000"
     max_ratio: str = "0.1"
-    risk_policies: List[Any] = Field(default_factory=list)
     
     default_leverage: str = "3"
     order_type: OrderType = OrderType.LimitOrder
@@ -43,7 +42,6 @@ class PositionBase(BaseModel):
     sz: Optional[Decimal] = None
     executor_sz: Optional[Dict[str, Any]] = None
     executor_id: Optional[int] = None
-    is_fake: bool = False
     pnl: Decimal = Decimal('0')
     fee: Decimal = Decimal('0')
     friction: Decimal = Decimal('0')
@@ -53,6 +51,7 @@ class PositionBase(BaseModel):
     is_closed: bool = False
     total_amount: Decimal = Decimal('0')
     total_sz: Decimal = Decimal('0')
+    virtual_positions: Optional[List[Dict[str, Any]]] = None
 
 class PositionUpdate(BaseModel):
     cost_price: Optional[Decimal] = None
@@ -85,6 +84,5 @@ class PositionFilter(BaseModel):
     strategy_id: Optional[int] = None
     strategy_instance_id: Optional[str] = None
     symbol: Optional[str] = None
-    is_fake: Optional[bool] = None
     ins_type: Optional[str] = None
     asset_type: Optional[str] = None

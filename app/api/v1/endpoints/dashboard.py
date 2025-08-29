@@ -82,6 +82,11 @@ async def get_dashboard_asset(
         not_end_time = not end_time
         if not_end_time:
             end_time = datetime.now()
+        # 统一为本地 naive datetime，避免 aware/naive 比较错误
+        if start_time.tzinfo is not None:
+            start_time = start_time.replace(tzinfo=None)
+        if end_time.tzinfo is not None:
+            end_time = end_time.replace(tzinfo=None)
         
         logger.info(f"Time range: {start_time} to {end_time}")
         
@@ -187,7 +192,30 @@ async def get_dashboard_asset(
             })
         
         # 计算性能指标（使用日级数据处理）
-        daily_values = get_daily_snapshots_from_hourly(asset_snapshots_formatted, start_time, end_time)
+        # 如果选择的开始时间早于第一条数据，则从第一条快照所在日开始，避免填充造成口径差异
+        def _parse_time_local(ts):
+            if isinstance(ts, str):
+                if ts.endswith('Z'):
+                    return datetime.fromisoformat(ts.replace('Z', '+00:00')).replace(tzinfo=None)
+                return datetime.fromisoformat(ts)
+            return ts
+
+        metrics_start = start_time
+        metrics_end = end_time
+        if asset_snapshots_formatted:
+            first_ts = _parse_time_local(asset_snapshots_formatted[0].get("snapshot_time"))
+            last_ts = _parse_time_local(asset_snapshots_formatted[-1].get("snapshot_time"))
+            if first_ts:
+                metrics_start = max(start_time, first_ts)
+            if last_ts:
+                metrics_end = max(metrics_start, max(end_time, last_ts))
+
+        daily_values = get_daily_snapshots_from_hourly(asset_snapshots_formatted, metrics_start, metrics_end)
+        
+        # 新增：使用原始小时级数据计算最大回撤
+        hourly_values = [float(snapshot.get("total_amount", 0)) for snapshot in asset_snapshots_formatted]
+        hourly_performance = calculate_performance_from_values(hourly_values, 365*24)  # 小时级数据，一年8760小时
+        
         # 方案A扩展：将首尾日度点替换为区间内首尾快照（与曲线完全一致）
         try:
             if daily_values and asset_snapshots_formatted:
@@ -202,6 +230,12 @@ async def get_dashboard_asset(
         except Exception:
             pass
         performance_metrics = calculate_performance_from_values(daily_values, 365)
+        
+        # 新增：如果小时级数据的最大回撤更大，则使用小时级数据
+        if hourly_performance.get("max_drawdown", {}).get("max_drawdown", 0) < performance_metrics.get("max_drawdown", {}).get("max_drawdown", 0):
+            performance_metrics["max_drawdown"] = hourly_performance["max_drawdown"]
+            performance_metrics["_hourly_mdd_used"] = True  # 标记使用了小时级数据
+        
         # 使用端点法基于首尾快照计算年化（与前端曲线口径完全一致）
         try:
             def _parse_time(ts):
@@ -230,7 +264,7 @@ async def get_dashboard_asset(
         
         # 计算上一时期的性能指标对比
         # 根据当前时间范围计算上一时期
-        # 统一使用本地时区
+        # 统一使用本地时区（已在上方处理，这里保留兼容）
         if start_time.tzinfo is not None:
             start_time = start_time.replace(tzinfo=None)
         if end_time.tzinfo is not None:
@@ -263,7 +297,7 @@ async def get_dashboard_asset(
             })
         
         # 计算时期对比（使用日级数据处理）
-        current_daily_values = get_daily_snapshots_from_hourly(asset_snapshots_formatted, start_time, end_time)
+        current_daily_values = get_daily_snapshots_from_hourly(asset_snapshots_formatted, metrics_start, metrics_end)
         # 同样应用方案A到当前时期数据（首尾覆盖）
         try:
             if current_daily_values and asset_snapshots_formatted:

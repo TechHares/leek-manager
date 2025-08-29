@@ -9,6 +9,8 @@ class WalkForwardCreate(BaseModel):
     # 策略与参数空间
     strategy_class: str = Field(..., description="策略类全名，如 leek_core.strategy.strategy_dmi.DMIStrategy")
     param_space: Dict[str, List[Any]]
+    # 风控策略（可选）：与策略配置保持一致，元素为 { class_name, config }
+    risk_policies: Optional[List[Dict[str, Any]]] = None
     # 关联配置（便于追踪与列表展示）
     data_config_id: Optional[int] = None
     cost_config_id: Optional[int] = None

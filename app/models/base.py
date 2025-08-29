@@ -10,6 +10,9 @@ class BaseModel(Base):
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     created_at = Column(DateTime, index=True, default=lambda: datetime.now())
     updated_at = Column(DateTime, default=lambda: datetime.now(), onupdate=lambda: datetime.now()) 
+
+    def dumps_map(self) -> dict:
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
     
 class ComponentModel(BaseModel):
     __abstract__ = True
@@ -21,6 +24,3 @@ class ComponentModel(BaseModel):
     project_id = Column(BigInteger, nullable=False)
     is_enabled = Column(Boolean, default=True, nullable=False)
     is_deleted = Column(Boolean, default=False, nullable=False)
-
-    def dumps_map(self) -> dict:
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}

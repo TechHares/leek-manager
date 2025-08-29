@@ -45,8 +45,6 @@ async def list_positions(
         query = query.filter(Position.strategy_instance_id == filters.strategy_instance_id)
     if filters.symbol is not None:
         query = query.filter(Position.symbol == filters.symbol)
-    if filters.is_fake is not None:
-        query = query.filter(cast(Position.is_fake, Boolean) == filters.is_fake)
     if filters.ins_type is not None:
         query = query.filter(Position.ins_type == filters.ins_type)
     if filters.asset_type is not None:

@@ -133,11 +133,11 @@ async def list_executor_templates(
 ):
     """
     获取执行器模板列表
-    - just_backtest 未传：仅返回非回测专用（正式）
+    - just_backtest 未传：返回全部
     - just_backtest=true：仅返回回测专用
     - just_backtest=false：仅返回非回测专用
     """
     items = await leek_template_manager.get_executors_by_project(project_id)
     if just_backtest is None:
-        return [x for x in items if not getattr(x, 'just_backtest', False)]
+        return items
     return [x for x in items if (getattr(x, 'just_backtest', False) is True) == (just_backtest is True)]

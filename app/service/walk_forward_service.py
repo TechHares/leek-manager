@@ -234,6 +234,13 @@ def run_walk_forward_task(task_id: int) -> Dict[str, Any]:
                                "data_source_params": cfg.get("data_source_params") or {},
                                "mount_dirs": cfg.get("mount_dirs") or [] },
             ),
+            risk_policies=[
+                {
+                    "class_name": (rp.get("class_name") or rp.get("cls")),
+                    "config": rp.get("config") or rp.get("params") or {},
+                }
+                for rp in (cfg.get("risk_policies") or [])
+            ] or None,
             on_progress=_on_progress,
         )
 

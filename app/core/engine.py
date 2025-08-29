@@ -18,10 +18,13 @@ from app.models.project_config import ProjectConfig
 from app.models.datasource import DataSource
 from app.models.execution import Executor
 from app.models.strategy import Strategy
+from app.models.risk_policy import RiskPolicy
+from app.models.risk_log import RiskLog
 from decimal import Decimal
 from datetime import datetime
 from app.models.position import Position
 from app.models.balance_transaction import BalanceTransaction, TransactionType
+from app.models.risk_log import RiskLog
 from app.core.config_manager import config_manager
 from app.core.template_manager import leek_template_manager
 
@@ -44,6 +47,7 @@ class EngineManager:
         client.register_handler(EventType.POSITION_UPDATE, self.handle_position_update)
         client.register_handler(EventType.POSITION_INIT, self.handle_order_updated)
         client.register_handler(EventType.TRANSACTION, self.handle_transaction)
+        client.register_handler(EventType.RISK_TRIGGERED, self.handle_risk_triggered)
 
     def handle_transaction(self, project_id: int, event):
         """处理交易事件"""
@@ -76,6 +80,49 @@ class EngineManager:
         with db_connect() as db:
             db.add(transaction)
             db.commit()
+
+    def handle_risk_triggered(self, project_id: int, event):
+        """处理风控触发事件"""
+        # 事件数据包含 RiskEvent 对象的信息
+        risk_event_data = event.data
+        logger.debug(f"收到风控触发事件[{project_id}]: {risk_event_data.get('risk_type')} - {risk_event_data.get('risk_policy_class_name')}")
+        
+        # 处理时间戳：如果是毫秒级时间戳，转换为秒级
+        trigger_timestamp = risk_event_data.get('trigger_time')
+        if trigger_timestamp:
+            # 如果时间戳大于 10^12，说明是毫秒级时间戳，需要转换为秒级
+            if trigger_timestamp > 10**12:
+                trigger_timestamp = trigger_timestamp / 1000
+            trigger_time = datetime.fromtimestamp(trigger_timestamp)
+        else:
+            trigger_time = datetime.now()
+        
+        # 将 RiskEvent 转换为 RiskLog 模型并保存到数据库
+        risk_log = RiskLog(
+            project_id=project_id,
+            risk_type=risk_event_data.get('risk_type', ''),
+            strategy_id=risk_event_data.get('strategy_id'),
+            strategy_instance_id=risk_event_data.get('strategy_instance_id'),
+            strategy_class_name=risk_event_data.get('strategy_class_name'),
+            risk_policy_id=risk_event_data.get('risk_policy_id'),
+            risk_policy_class_name=risk_event_data.get('risk_policy_class_name', ''),
+            trigger_time=trigger_time,
+            trigger_reason=risk_event_data.get('trigger_reason'),
+            signal_id=risk_event_data.get('signal_id'),
+            execution_order_id=risk_event_data.get('execution_order_id'),
+            position_id=risk_event_data.get('position_id'),
+            original_amount=Decimal(str(risk_event_data.get('original_amount'))) if risk_event_data.get('original_amount') is not None else None,
+            pnl=Decimal(str(risk_event_data.get('pnl'))) if risk_event_data.get('pnl') is not None else None,
+            extra_info=risk_event_data.get('extra_info'),
+            tags=risk_event_data.get('tags'),
+        )
+        
+        with db_connect() as db:
+            db.add(risk_log)
+            db.commit()
+            db.refresh(risk_log)
+            logger.debug(f"风控日志已保存: ID={risk_log.id}, 项目={project_id}, 类型={risk_event_data.get('risk_type')}, 策略={risk_event_data.get('risk_policy_class_name')}")
+                
 
     def handle_exec_order_updated(self, project_id: int, event):
         """处理执行订单更新事件"""
@@ -141,6 +188,8 @@ class EngineManager:
                     return
                 # 更新现有仓位
                 self.update_position(existing_position, position)
+                # 如果有虚拟仓位，更新风控日志
+                self.update_risk_log_with_virtual_positions(db, project_id, existing_position)
             else:
                 # 创建新仓位
                 new_position = self.convert_position(project_id, position)
@@ -156,7 +205,11 @@ class EngineManager:
         executor_sz = position_data.get('executor_sz', {})
         if executor_sz:
             sz = sum(Decimal(v) for v in executor_sz.values())
-        is_closed = sz <= 0
+        vpos = position_data.get('virtual_positions', [])
+        vsz = 0
+        if vpos:
+            vsz = sum(Decimal(vp.get("sz", 0)) for vp in vpos)
+        is_closed = sz <= 0 and vsz <= 0
         
         return Position(
             project_id=project_id,
@@ -174,7 +227,6 @@ class EngineManager:
             max_sz=Decimal(str(position_data.get('sz', 0))),
             max_amount=Decimal(str(position_data.get('amount', 0))),
             executor_id=str(position_data.get('executor_id')) if position_data.get('executor_id') else None,
-            is_fake=bool(position_data.get('is_fake', False)),
             pnl=Decimal(str(position_data.get('pnl', 0))),
             fee=Decimal(str(position_data.get('fee', 0))),
             friction=Decimal(str(position_data.get('friction', 0))),
@@ -185,12 +237,17 @@ class EngineManager:
             is_closed=is_closed,
             total_amount=Decimal(str(position_data.get('total_amount', 0))),
             total_sz=Decimal(str(position_data.get('total_sz', 0))),
+            virtual_positions=position_data.get('virtual_positions', []),
             close_price=Decimal(str(position_data.get('close_price'))) if position_data.get('close_price') else None,
             current_price=Decimal(str(position_data.get('current_price'))) if position_data.get('current_price') else None,
         )
 
     def update_position(self, existing_position: Position, position_data):
         """更新仓位信息"""
+        t = datetime.fromtimestamp(position_data.get('update_time') / 1000) 
+        if existing_position.updated_at > t:
+            return
+        existing_position.updated_at = t
         # 更新仓位信息，直接转换类型
         if 'amount' in position_data:
             existing_position.amount = Decimal(str(position_data.get('amount', 0)))
@@ -214,6 +271,8 @@ class EngineManager:
             existing_position.executor_sz = position_data.get('executor_sz', {})
         if 'current_price' in position_data:
             existing_position.current_price = Decimal(str(position_data.get('current_price'))) if position_data.get('current_price') else None
+        if 'virtual_positions' in position_data:
+            existing_position.virtual_positions = position_data.get('virtual_positions', [])
 
         sz = 0
         executor_sz = position_data.get('executor_sz', {})
@@ -223,14 +282,48 @@ class EngineManager:
         # 更新最大值
         existing_position.max_sz = max(existing_position.max_sz,  sz)
         existing_position.max_amount = max(existing_position.max_amount, Decimal(str(position_data.get('amount', 0))))
-
-        existing_position.updated_at = datetime.now()
-        
+        vpos = position_data.get('virtual_positions', [])
+        vsz = 0
+        if vpos:
+            vsz = sum(Decimal(vp.get("sz", 0)) for vp in vpos)
         # 检查是否已关闭
-        if existing_position.sz <= 0:
+        if existing_position.sz <= 0 and vsz <= 0:
             existing_position.is_closed = True
             existing_position.close_time = datetime.now()
 
+    def update_risk_log_with_virtual_positions(self, db, project_id: int, position: Position):
+        """更新风控日志的虚拟仓位信息"""
+        if not position.virtual_positions or len(position.virtual_positions) == 0:
+            return
+        
+        # 查找相关的风控日志（signal类型，根据signal_id和policy_id）
+        for virtual_position in position.virtual_positions:
+            signal_id = virtual_position.get('signal_id')
+            policy_id = virtual_position.get('policy_id')
+            pnl = Decimal(virtual_position.get('pnl', 0))
+            if pnl == 0:
+                continue
+            if not signal_id or not policy_id:
+                continue
+
+            # 查找匹配的风控日志（正常情况下只有一条）
+            risk_log = db.query(RiskLog).filter(
+                RiskLog.project_id == project_id,
+                RiskLog.risk_type == 'signal',
+                RiskLog.signal_id == int(signal_id),
+                RiskLog.risk_policy_id == int(policy_id)
+            ).first()
+            
+            if risk_log:
+                # 更新extra_info，保留原有的其他信息
+                risk_log.extra_info = (risk_log.extra_info or {})
+                risk_log.extra_info[str(position.id)] = str(pnl)
+                # 更新总盈亏
+                risk_log.pnl = sum(Decimal(v) for v in risk_log.extra_info.values())
+                logger.info(f"更新风控日志: {risk_log.id}, signal_id: {signal_id}, policy_id: {policy_id}, virtual_pnl: {risk_log.pnl}")
+            else:
+                logger.error(f"未找到风控日志: signal_id: {signal_id}, policy_id: {policy_id}, virtual_pnl: {pnl}")
+        
     def convert_order(self, project_id: int, event) -> List[Order]:
         """转换订单模型"""
         orders = []
@@ -363,6 +456,11 @@ class EngineManager:
             # 等待子进程启动
             await asyncio.sleep(2)
             
+            # 同步仓位风控策略（全局）—在启用执行器之前
+            risk_policies = db.query(RiskPolicy).filter_by(project_id=int(instance_id), is_enabled=True).all()
+            for rp in risk_policies:
+                await self.send_action(instance_id, "add_position_policy", config=rp.dumps_map())
+
             # 启用执行器
             executors = db.query(Executor).filter_by(project_id=int(instance_id), is_enabled=True).all()
             for ex in executors:
