@@ -244,10 +244,6 @@ class EngineManager:
 
     def update_position(self, existing_position: Position, position_data):
         """更新仓位信息"""
-        t = datetime.fromtimestamp(position_data.get('update_time') / 1000) 
-        if existing_position.updated_at > t:
-            return
-        existing_position.updated_at = t
         # 更新仓位信息，直接转换类型
         if 'amount' in position_data:
             existing_position.amount = Decimal(str(position_data.get('amount', 0)))
@@ -370,6 +366,21 @@ class EngineManager:
     def convert_exec_order(self, project_id: int, event) -> ExecutionOrder:
         """转换执行订单模型"""
         data = event.data
+        execution_assets = data.get('execution_assets', [])
+        
+        # 按照leek-core中的逻辑计算open_amount和open_ratio
+        open_amount = Decimal('0')
+        open_ratio = Decimal('0')
+        
+        for asset in execution_assets:
+            if asset.get('is_open', False):
+                # 累加金额
+                if asset.get('amount'):
+                    open_amount += Decimal(str(asset['amount']))
+                # 累加比例
+                if asset.get('ratio'):
+                    open_ratio += Decimal(str(asset['ratio']))
+        
         execution_info = ExecutionOrder(
             id=int(data.get('context_id', 0)),
             project_id=project_id,
@@ -377,9 +388,9 @@ class EngineManager:
             strategy_id=int(data.get('strategy_id', 0)),
             strategy_instant_id=str(data.get('strategy_instant_id', '')),
             target_executor_id=str(data.get('target_executor_id', '')),
-            execution_assets=data.get('execution_assets', []),
-            open_amount=Decimal(str(data.get('open_amount', 0))),
-            open_ratio=Decimal(str(data.get('open_ratio', 0))),
+            execution_assets=execution_assets,
+            open_amount=open_amount,
+            open_ratio=open_ratio,
             leverage=Decimal(str(data.get('leverage'))) if data.get('leverage') else None,
             order_type=data.get('order_type', 0),
             trade_type=data.get('trade_type', 0),
