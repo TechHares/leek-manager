@@ -106,7 +106,7 @@ async def get_dashboard_asset(
             pnl = Decimal(position_data.get('pnl', '0'))
             friction = Decimal(position_data.get('friction', '0'))
             fee = Decimal(position_data.get('fee', '0'))
-            total_amount = Decimal(position_data.get('total_amount', '0'))
+            total_amount = Decimal(position_data.get('total_value', '0'))
             virtual_pnl = Decimal(position_data.get('virtual_pnl', '0'))
             
             # 计算仓位数量

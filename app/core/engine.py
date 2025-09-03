@@ -35,6 +35,7 @@ class EngineManager:
         self.clients: Dict[str, GrpcEngineClient] = {}
         self.scan_interval = 20  # 秒
         self._lock = asyncio.Lock()
+        self._initializing_clients: Dict[str, bool] = {}  # 跟踪正在初始化的客户端
 
     def register_event_handlers(self, client: GrpcEngineClient):
         """注册事件处理器"""
@@ -438,59 +439,72 @@ class EngineManager:
             if instance_id in self.clients:
                 return self.clients[instance_id]
             
-            # 1. 配置
-            with db_connect() as db:
-                project_config = db.query(ProjectConfig).filter_by(project_id=int(instance_id)).first()
-                if not project_config:
-                    # 没有则插入一条默认配置
-                    project_config = ProjectConfig(project_id=int(instance_id))
-                    project_config.alert_config = []
-                    project_config.mount_dirs = ["default"]
-                    db.add(project_config)
-                    db.commit()
-                    db.refresh(project_config)
+            # 标记客户端正在初始化，防止被扫描器移除
+            self._initializing_clients[instance_id] = True
+            
+            try:
+                # 1. 配置
+                with db_connect() as db:
+                    project_config = db.query(ProjectConfig).filter_by(project_id=int(instance_id)).first()
+                    if not project_config:
+                        # 没有则插入一条默认配置
+                        project_config = ProjectConfig(project_id=int(instance_id))
+                        project_config.alert_config = []
+                        project_config.mount_dirs = ["default"]
+                        db.add(project_config)
+                        db.commit()
+                        db.refresh(project_config)
+                    
+                    # 序列化配置
+                    config_dict = {c.name: getattr(project_config, c.name) for c in project_config.__table__.columns}
+                    
+                # 创建 gRPC 客户端
+                client = GrpcEngineClient(
+                    instance_id, name, config_dict
+                )
                 
-                # 序列化配置
-                config_dict = {c.name: getattr(project_config, c.name) for c in project_config.__table__.columns}
+                # 注册事件处理器
+                self.register_event_handlers(client)
                 
-            # 创建 gRPC 客户端
-            client = GrpcEngineClient(
-                instance_id, name, config_dict
-            )
-            
-            # 注册事件处理器
-            self.register_event_handlers(client)
-            
-            await client.start()
-            self.clients[instance_id] = client
-            
-            # 等待子进程启动
-            await asyncio.sleep(2)
-            
-            # 同步仓位风控策略（全局）—在启用执行器之前
-            risk_policies = db.query(RiskPolicy).filter_by(project_id=int(instance_id), is_enabled=True).all()
-            for rp in risk_policies:
-                await self.send_action(instance_id, "add_position_policy", config=rp.dumps_map())
+                await client.start()
+                self.clients[instance_id] = client
+                
+                # 等待子进程启动
+                await asyncio.sleep(2)
+                
+                # 同步仓位风控策略（全局）—在启用执行器之前
+                risk_policies = db.query(RiskPolicy).filter_by(project_id=int(instance_id), is_enabled=True).all()
+                for rp in risk_policies:
+                    await self.send_action(instance_id, "add_position_policy", config=rp.dumps_map())
 
-            # 启用执行器
-            executors = db.query(Executor).filter_by(project_id=int(instance_id), is_enabled=True).all()
-            for ex in executors:
-                await self.send_action(instance_id, "add_executor", config=ex.dumps_map())
+                # 启用执行器
+                executors = db.query(Executor).filter_by(project_id=int(instance_id), is_enabled=True).all()
+                for ex in executors:
+                    await self.send_action(instance_id, "add_executor", config=ex.dumps_map())
 
-            # 启用数据源
-            datasources = db.query(DataSource).filter_by(project_id=int(instance_id), is_enabled=True).all()
-            for ds in datasources:
-                await self.send_action(instance_id, "add_data_source", config=ds.dumps_map())
+                # 启用数据源
+                datasources = db.query(DataSource).filter_by(project_id=int(instance_id), is_enabled=True).all()
+                for ds in datasources:
+                    await self.send_action(instance_id, "add_data_source", config=ds.dumps_map())
+                
+                # 启用策略
+                strategies = db.query(Strategy).filter_by(project_id=int(instance_id), is_enabled=True).all()
+                for st in strategies:
+                    await self.send_action(instance_id, "add_strategy", config=st.dumps_map())
+
+                return client
             
-            # 启用策略
-            strategies = db.query(Strategy).filter_by(project_id=int(instance_id), is_enabled=True).all()
-            for st in strategies:
-                await self.send_action(instance_id, "add_strategy", config=st.dumps_map())
-
-            return client
+            finally:
+                # 初始化完成，移除标记
+                self._initializing_clients.pop(instance_id, None)
 
     async def remove_client(self, instance_id: str):
         """移除客户端"""
+        # 检查客户端是否正在初始化，如果是则不移除
+        if instance_id in self._initializing_clients:
+            logger.info(f"客户端 {instance_id} 正在初始化，跳过移除操作")
+            return
+            
         client = self.clients.pop(instance_id, None)
         if client:
             await client.stop()
@@ -504,7 +518,22 @@ class EngineManager:
         try:
             client = self.get_client(instance_id)
             if not client:
-                raise Exception(f"未找到客户端: {instance_id}")
+                # 检查是否正在初始化
+                if instance_id in self._initializing_clients:
+                    logger.warning(f"客户端 {instance_id} 正在初始化，等待完成后重试")
+                    # 等待初始化完成
+                    max_wait = 10  # 最多等待10秒
+                    wait_time = 0
+                    while instance_id in self._initializing_clients and wait_time < max_wait:
+                        await asyncio.sleep(0.5)
+                        wait_time += 0.5
+                    
+                    # 重新获取客户端
+                    client = self.get_client(instance_id)
+                    if not client:
+                        raise Exception(f"等待初始化完成后仍未找到客户端: {instance_id}")
+                else:
+                    raise Exception(f"未找到客户端: {instance_id}")
             return await client.invoke(action, *args, **kwargs)
                 
         except Exception as e:
@@ -552,6 +581,10 @@ class EngineManager:
                     # 清理那些在clients中存在但在数据库中已经不存在的项目对应的客户端
                     for instance_id in list(self.clients.keys()):
                         if instance_id not in active_project_ids:
+                            # 检查是否正在初始化，如果是则跳过
+                            if instance_id in self._initializing_clients:
+                                logger.info(f"Client {instance_id} is initializing, skipping removal")
+                                continue
                             logger.info(f"Stopping client for deleted project {instance_id}")
                             await self.remove_client(instance_id)
                             # 如果数据库中有这个项目，更新其engine_info
