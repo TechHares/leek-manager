@@ -66,6 +66,7 @@ class PositionOut(PositionBase):
     max_sz: Optional[Decimal] = None
     max_amount: Optional[Decimal] = None
     close_price: Optional[Decimal] = None
+    instance_name: Optional[str] = None
 
     class Config:
         from_attributes = True

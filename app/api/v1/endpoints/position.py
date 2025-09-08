@@ -6,6 +6,7 @@ from datetime import datetime
 from app.api.deps import get_db_session
 from app.models.project_config import ProjectConfig
 from app.models.position import Position
+from app.models.strategy import Strategy
 from app.api.deps import get_project_id
 from app.schemas.position import (
     PositionSettingCreate, 
@@ -51,7 +52,24 @@ async def list_positions(
         query = query.filter(Position.asset_type == filters.asset_type)
     
     total = query.count()
-    items = query.order_by(Position.open_time.desc(), Position.id.desc()).offset((page - 1) * size).limit(size).all()
+    items = (
+        query.order_by(Position.open_time.desc(), Position.id.desc())
+        .offset((page - 1) * size)
+        .limit(size)
+        .all()
+    )
+
+    if items:
+        strategy_ids = list({p.strategy_id for p in items})
+        strategies = (
+            db.query(Strategy.id, Strategy.name)
+            .filter(Strategy.id.in_(strategy_ids), Strategy.project_id == project_id)
+            .all()
+        )
+        id_to_name = {sid: sname for sid, sname in strategies}
+        for p in items:
+            setattr(p, "instance_name", id_to_name.get(p.strategy_id))
+
     return PageResponse(total=total, page=page, size=size, items=items)
 
 @router.get("/positions/{position_id}", response_model=PositionOut)
@@ -66,6 +84,10 @@ async def get_position(
     position = db.query(Position).filter(Position.id == position_id, Position.project_id == project_id).first()
     if not position:
         raise HTTPException(status_code=404, detail="Position not found")
+    # Enrich with strategy instance name
+    strategy = db.query(Strategy.name).filter(Strategy.id == position.strategy_id, Strategy.project_id == project_id).first()
+    if strategy:
+        setattr(position, "instance_name", strategy[0])
     return position
 
 @router.patch("/positions/{position_id}", response_model=PositionOut)
