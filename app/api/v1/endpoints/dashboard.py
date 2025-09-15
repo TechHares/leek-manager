@@ -108,12 +108,11 @@ async def get_dashboard_asset(
             fee = Decimal(position_data.get('fee', '0'))
             total_amount = Decimal(position_data.get('total_value', '0'))
             virtual_pnl = Decimal(position_data.get('virtual_pnl', '0'))
+            # 兼容不同结构的本金字段
+            principal = Decimal(position_data.get('capital', {}).get('principal', '0'))
             
-            # 计算仓位数量
-            positions = position_data.get('positions', [])
-            position_amount = len(positions)
+            position_amount = int(position_data.get('position', {}).get('position_count', 0))
             
-            # 保存到数据库
             snapshot = AssetSnapshot(project_id=project_id,
                 snapshot_time=datetime.now(),
                 activate_amount=activate_amount,
@@ -121,6 +120,7 @@ async def get_dashboard_asset(
                 friction=friction,
                 fee=fee,
                 total_amount=total_amount,
+                principal=principal,
                 virtual_pnl=virtual_pnl,
                 position_amount=position_amount)
             asset_snapshots.append(snapshot)
@@ -170,6 +170,7 @@ async def get_dashboard_asset(
                 "snapshot_time": snapshot.snapshot_time.isoformat(),
                 "total_amount": float(snapshot.total_amount),
                 "activate_amount": float(snapshot.activate_amount),
+                "principal": float(snapshot.principal or 0),
                 "pnl": float(snapshot.pnl),
                 "fee": float(snapshot.fee),
                 "friction": float(snapshot.friction),
@@ -289,6 +290,7 @@ async def get_dashboard_asset(
                 "snapshot_time": snapshot.snapshot_time.isoformat(),
                 "total_amount": float(snapshot.total_amount),
                 "activate_amount": float(snapshot.activate_amount),
+                "principal": float(snapshot.principal or 0),
                 "pnl": float(snapshot.pnl),
                 "fee": float(snapshot.fee),
                 "friction": float(snapshot.friction),
@@ -415,14 +417,14 @@ async def get_position_status(
             else:
                 position_data = await engine.invoke("get_position_state")
             current_data = {
-                "total_amount": Decimal(position_data.get('total_amount', '0')),
+                "total_amount": Decimal(position_data.get('total_value', '0')),
                 "activate_amount": Decimal(position_data.get('activate_amount', '0')),
                 "pnl": Decimal(position_data.get('pnl', '0')),
                 "friction": Decimal(position_data.get('friction', '0')),
                 "fee": Decimal(position_data.get('fee', '0')),
                 "virtual_pnl": Decimal(position_data.get('virtual_pnl', '0')),
-                "positions": position_data.get('positions', []),
-                "asset_count": position_data.get('asset_count', 0),
+                "positions": position_data.get('position', {}).get('positions', []),
+                "asset_count": position_data.get('position', {}).get('asset_count', 0),
                 "timestamp": datetime.now()
             }
         except Exception as e:

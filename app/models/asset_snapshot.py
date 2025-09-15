@@ -14,6 +14,7 @@ class AssetSnapshot(BaseModel):
     friction = Column(Numeric(36, 18), nullable=False, default=0, comment="摩擦成本")
     fee = Column(Numeric(36, 18), nullable=False, default=0, comment="手续费")
     total_amount = Column(Numeric(36, 18), nullable=False, comment="总金额")
+    principal = Column(Numeric(36, 18), nullable=True, default=0, comment="本金")
     virtual_pnl = Column(Numeric(36, 18), nullable=False, default=0, comment="虚拟盈亏")
     position_amount = Column(Integer, nullable=False, default=0, comment="仓位数量")
 

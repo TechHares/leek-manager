@@ -30,12 +30,15 @@ def save_asset_snapshot_from_position_image(project_id: int, data: dict) -> Asse
             pnl = Decimal(data.get('pnl', '0'))
             friction = Decimal(data.get('friction', '0'))
             fee = Decimal(data.get('fee', '0'))
-            total_amount = Decimal(data.get('total_amount', '0'))
+            total_amount = Decimal(data.get('total_value', '0'))
             virtual_pnl = Decimal(data.get('virtual_pnl', '0'))
-            
-            # 计算仓位数量
-            positions = data.get('positions', [])
-            position_amount = len(positions)
+            # 兼容不同结构，优先顶层，其次 capital 内
+            principal_source = data.get('principal')
+            if principal_source is None:
+                principal_source = (data.get('') or {}).get('', '0')
+
+            position_amount = int(data.get('position', {}).get('position_count', '0'))
+            principal = Decimal(data.get('capital', {}).get('principal', '0'))
             
             # 创建快照对象
             snapshot_data = AssetSnapshotCreate(
@@ -46,6 +49,7 @@ def save_asset_snapshot_from_position_image(project_id: int, data: dict) -> Asse
                 friction=friction,
                 fee=fee,
                 total_amount=total_amount,
+                principal=principal,
                 virtual_pnl=virtual_pnl,
                 position_amount=position_amount
             )
@@ -56,7 +60,7 @@ def save_asset_snapshot_from_position_image(project_id: int, data: dict) -> Asse
             db.commit()
             db.refresh(snapshot)
             
-            logger.info(f"项目 {project_id} 资产快照保存成功: 激活金额={activate_amount}, 盈亏={pnl}, 仓位数量={position_amount}")
+            logger.info(f"项目 {project_id} 资产快照保存成功: 本金={principal}, 激活金额={activate_amount}, 盈亏={pnl}, 仓位数量={position_amount}")
             
             return snapshot
         
@@ -108,6 +112,7 @@ def generate_asset_snapshot(db: Session, project_id: int, snapshot_time: datetim
         
         # 计算激活金额（总金额 - 手续费 - 摩擦成本）
         activate_amount = total_amount - total_fee - total_friction
+        principal = Decimal('0')
         
         # 创建快照对象
         snapshot_data = AssetSnapshotCreate(
@@ -118,6 +123,7 @@ def generate_asset_snapshot(db: Session, project_id: int, snapshot_time: datetim
             friction=total_friction,
             fee=total_fee,
             total_amount=total_amount,
+            principal=principal,
             virtual_pnl=Decimal('0'),  # 虚拟盈亏暂时设为0
             position_amount=position_count
         )

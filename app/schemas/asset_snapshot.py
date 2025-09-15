@@ -11,6 +11,7 @@ class AssetSnapshotBase(BaseModel):
     friction: Decimal = Decimal('0')
     fee: Decimal = Decimal('0')
     total_amount: Decimal
+    principal: Decimal = Decimal('0')
     virtual_pnl: Decimal = Decimal('0')
     position_amount: int = 0
 

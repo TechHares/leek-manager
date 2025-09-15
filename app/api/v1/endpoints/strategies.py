@@ -50,10 +50,7 @@ async def create_strategy(
     project_id: int = Depends(deps.get_project_id)
 ):
     data = strategy.model_dump()
-    data["enter_strategy_config"] = data.pop("enter_strategy_params", None)
-    data["exit_strategy_config"] = data.pop("exit_strategy_params", None)
-    data["enter_strategy_class_name"] = data.pop("enter_strategy_class_name", None)
-    data["exit_strategy_class_name"] = data.pop("exit_strategy_class_name", None)
+    # 进出场子策略已移除
     data["info_fabricator_configs"] = data.pop("info_fabricator_configs", None)
     data["params"] = data.pop("params", None)
     data["project_id"] = project_id
@@ -88,14 +85,7 @@ async def update_strategy(
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
     update_data = strategy_in.model_dump(exclude_unset=True)
-    if "enter_strategy" in update_data:
-        update_data["enter_strategy_class_name"] = update_data.pop("enter_strategy")
-    if "enter_strategy_params" in update_data:
-        update_data["enter_strategy_config"] = update_data.pop("enter_strategy_params")
-    if "exit_strategy" in update_data:
-        update_data["exit_strategy_class_name"] = update_data.pop("exit_strategy")
-    if "exit_strategy_params" in update_data:
-        update_data["exit_strategy_config"] = update_data.pop("exit_strategy_params")
+    # 进出场子策略已移除
     for field, value in update_data.items():
         setattr(strategy, field, value)
     db.commit()
@@ -177,7 +167,7 @@ async def delete_strategy(
     return {"status": "success"}
 
 @router.get("/templates/strategy", response_model=List[TemplateResponse])
-async def list_executor_templates(
+async def list_strategy_templates(
     project_id: int = Depends(deps.get_project_id)
 ):
     """
@@ -185,26 +175,9 @@ async def list_executor_templates(
     """
     return await leek_template_manager.get_strategy_by_project(project_id)
 
-@router.get("/templates/strategy/exit", response_model=List[TemplateResponse])
-async def list_executor_templates(
-    project_id: int = Depends(deps.get_project_id)
-):
-    """
-    获取模板列表
-    """
-    return await leek_template_manager.get_exit_strategy_by_project(project_id)
-
-@router.get("/templates/strategy/enter", response_model=List[TemplateResponse])
-async def list_executor_templates(
-    project_id: int = Depends(deps.get_project_id)
-):
-    """
-    获取模板列表
-    """
-    return await leek_template_manager.get_enter_strategy_by_project(project_id)
 
 @router.get("/templates/strategy/policy", response_model=List[TemplateResponse])
-async def list_executor_templates(
+async def list_strategy_policy_templates(
     project_id: int = Depends(deps.get_project_id)
 ):
     """
@@ -213,7 +186,7 @@ async def list_executor_templates(
     return await leek_template_manager.get_strategy_policy_by_project(project_id)
 
 @router.get("/templates/strategy/fabricator", response_model=List[TemplateResponse])
-async def list_executor_templates(
+async def list_strategy_fabricator_templates(
     project_id: int = Depends(deps.get_project_id)
 ):
     """

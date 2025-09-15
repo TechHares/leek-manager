@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, cast, Boolean
@@ -28,6 +28,7 @@ router = APIRouter()
 @router.get("/positions", response_model=PageResponse[PositionOut])
 async def list_positions(
     filters: PositionFilter = Depends(),
+    strategy_ids: Optional[str] = None,
     page: int = 1,
     size: int = 20,
     project_id: int = Depends(get_project_id),
@@ -40,7 +41,15 @@ async def list_positions(
     query = query.filter(Position.project_id == project_id)
     if filters.is_closed is not None:
         query = query.filter(cast(Position.is_closed, Boolean) == filters.is_closed)
-    if filters.strategy_id is not None:
+    # Support multi-strategy filtering via comma-separated strategy_ids, fallback to single strategy_id
+    if strategy_ids:
+        try:
+            ids = [int(x) for x in strategy_ids.split(',') if x.strip().isdigit()]
+        except Exception:
+            ids = []
+        if ids:
+            query = query.filter(Position.strategy_id.in_(ids))
+    elif filters.strategy_id is not None:
         query = query.filter(Position.strategy_id == filters.strategy_id)
     if filters.strategy_instance_id is not None:
         query = query.filter(Position.strategy_instance_id == filters.strategy_instance_id)

@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, cast, Boolean
+from sqlalchemy import and_, cast, Boolean, or_
 from app.api.deps import get_db_session
 from app.models.order import Order, ExecutionOrder
 from app.models.strategy import Strategy
@@ -16,11 +16,13 @@ router = APIRouter()
 async def list_orders(
     position_id: str = Query(None),
     strategy_id: int = Query(None),
+    strategy_ids: Optional[str] = Query(None, description="Comma separated strategy IDs"),
     order_status: str = Query(None),
     is_open: bool = Query(None),
     is_fake: bool = Query(None),
     market_order_id: str = Query(None),
     executor_id: str = Query(None),
+    keyword: Optional[str] = Query(None, description="Search by position_id or market_order_id or executor_id"),
     page: int = 1,
     size: int = 20,
     project_id: int = Depends(get_project_id),
@@ -30,7 +32,15 @@ async def list_orders(
     query = query.filter(Order.project_id == project_id)
     if position_id:
         query = query.filter(Order.position_id == position_id)
-    if strategy_id:
+    # Support multi strategy ids
+    if strategy_ids:
+        try:
+            ids = [int(x) for x in strategy_ids.split(',') if x.strip().isdigit()]
+        except Exception:
+            ids = []
+        if ids:
+            query = query.filter(Order.strategy_id.in_(ids))
+    elif strategy_id:
         query = query.filter(Order.strategy_id == strategy_id)
     if order_status:
         query = query.filter(Order.order_status == order_status)
@@ -42,6 +52,15 @@ async def list_orders(
         query = query.filter(Order.market_order_id == market_order_id)
     if executor_id:
         query = query.filter(Order.executor_id == executor_id)
+    # Keyword OR-filter support
+    if keyword:
+        ors = [Order.market_order_id == keyword]
+        if keyword.isdigit():
+            ors.append(Order.id == int(keyword))
+            ors.append(Order.position_id == int(keyword))
+            ors.append(Order.signal_id == int(keyword))
+            ors.append(Order.executor_id == int(keyword))
+        query = query.filter(or_(*ors))
     total = query.count()
     items = query.order_by(Order.order_time.desc()).offset((page - 1) * size).limit(size).all()
     # 获取所有策略ID和执行器ID
@@ -80,7 +99,9 @@ async def get_order_detail(order_id: int, project_id: int = Depends(get_project_
 async def list_execution_infos(
     signal_id: str = Query(None),
     strategy_id: int = Query(None),
-    strategy_instant_id: str = Query(None),
+    strategy_ids: Optional[str] = Query(None, description="Comma separated strategy IDs"),
+    strategy_instance_id: str = Query(None),
+    keyword: Optional[str] = Query(None, description="Search by signal_id or id"),
     page: int = 1,
     size: int = 20,
     project_id: int = Depends(get_project_id),
@@ -89,10 +110,22 @@ async def list_execution_infos(
     query = db.query(ExecutionOrder).filter(ExecutionOrder.project_id == project_id)
     if signal_id:
         query = query.filter(ExecutionOrder.signal_id == signal_id)
-    if strategy_id:
+    if strategy_ids:
+        try:
+            ids = [int(x) for x in strategy_ids.split(',') if x.strip().isdigit()]
+        except Exception:
+            ids = []
+        if ids:
+            query = query.filter(ExecutionOrder.strategy_id.in_(ids))
+    elif strategy_id:
         query = query.filter(ExecutionOrder.strategy_id == strategy_id)
-    if strategy_instant_id:
-        query = query.filter(ExecutionOrder.strategy_instant_id == strategy_instant_id)
+    if strategy_instance_id:
+        query = query.filter(ExecutionOrder.strategy_instance_id == strategy_instance_id)
+    if keyword:
+        ors = [ExecutionOrder.signal_id == keyword]
+        if keyword.isdigit():
+            ors.append(ExecutionOrder.id == int(keyword))
+        query = query.filter(or_(*ors))
     total = query.count()
     items = query.order_by(ExecutionOrder.created_time.desc()).offset((page - 1) * size).limit(size).all()
     strategy_ids = {item.strategy_id for item in items if item.strategy_id}

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "leek-manager"
-version = "1.5.0"
+version = "1.6.0"
 description = "Leek Manager Service - 量化交易管理系统"
 authors = ["shenglin.li <764935704@qq.com>"]
 readme = "README.md"
@@ -35,27 +35,27 @@ classifiers = [
 python = ">=3.11,<3.13"
 fastapi = "0.109.2"
 uvicorn = "0.27.1"
-pydantic = ">=2.1.4"
-pydantic-settings = ">=2.1.0"
-python-dotenv = ">=1.1.0"
+pydantic = "~=2.11.7"
+pydantic-settings = "~=2.10.1"
+python-dotenv = "~=1.1.0"
 sqlalchemy = "~=2.0.27"
 python-jose = "3.3.0"
 python-multipart = "0.0.9"
-werkzeug = ">=3.0.1"
+werkzeug = "~=3.0.1"
 alembic = "1.15.2"
-pymysql = ">=1.1.0"
-tomli = "^2.0.1"
-apscheduler = "^3.10.4"
-grpcio = "^1.74.0"
-grpcio-tools = "^1.74.0"
-protobuf = "^6.31.1"
+pymysql = "~=1.1.0"
+tomli = "~=2.0.1"
+apscheduler = "~=3.10.4"
+grpcio = "~=1.74.0"
+grpcio-tools = "~=1.74.0"
+protobuf = "~=6.31.1"
 leek-core = { path = "../leek-core", develop = true }
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.4.4"
-black = "^24.4.2"
-isort = "^5.13.2"
-flake8 = "^7.0.0"
+pytest = "~=7.4.4"
+black = "~=24.4.2"
+isort = "~=5.13.2"
+flake8 = "~=7.0.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -90,10 +90,10 @@ name = "tencent"
 url = "https://mirrors.cloud.tencent.com/pypi/simple/"
 priority = "supplemental"
 
-[[tool.poetry.source]]
-name = "douban"
-url = "https://pypi.douban.com/simple/"
-priority = "supplemental"
+# [[tool.poetry.source]]
+# name = "douban"
+# url = "https://pypi.douban.com/simple/"
+# priority = "supplemental"
 
 [[tool.poetry.source]]
 name = "ustc"

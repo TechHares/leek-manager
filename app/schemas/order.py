@@ -10,7 +10,7 @@ class OrderBase(BaseModel):
     strategy_id: int
     strategy_name: Optional[str] = None
     exec_name: Optional[str] = None
-    strategy_instant_id: str
+    strategy_instance_id: str
     exec_order_id: Optional[str] = None
     signal_id: str
     order_status: OrderStatus
@@ -91,7 +91,7 @@ class ExecutionInfo(BaseModel):
     signal_id: str
     strategy_id: int
     strategy_name: Optional[str] = None
-    strategy_instant_id: str
+    strategy_instance_id: str
     target_executor_id: str
     open_amount: Decimal
     open_ratio: Decimal

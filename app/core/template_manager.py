@@ -11,7 +11,7 @@ from leek_core.data import *
 from leek_core.executor import *
 from leek_core.strategy import *
 from leek_core.info_fabricator import *
-from leek_core.sub_strategy import *
+ 
 from leek_core.policy import *
 from leek_core.risk import *
 from app.db.session import db_connect
@@ -183,8 +183,8 @@ class TemplateManager:
     def __load_default_templates(self):
         if self.default_templates is None:
             self.default_templates = []
-            for m in ["leek_core.data", "leek_core.executor", "leek_core.strategy", "leek_core.sub_strategy", "leek_core.policy",
-                     "leek_core.risk", "leek_core.alarm", "leek_core.info_fabricator"]:
+            for m in ["leek_core.data", "leek_core.executor", "leek_core.strategy", "leek_core.policy",
+                     "leek_core.sub_strategy", "leek_core.risk", "leek_core.alarm", "leek_core.info_fabricator"]:
                 cls = self.scan_module(m)
                 self.default_templates += cls
 
@@ -277,25 +277,7 @@ class LeekTemplateManager(Generic[T]):
         """
         return await self.get_templates_by_project(project_id, Strategy, exclude_types={Strategy, CTAStrategy})
     
-    async def get_enter_strategy_by_project(self, project_id: int) -> List[TemplateResponse]:
-        """
-        获取指定项目的入场策略模板列表
-        参数:
-            project_id: 项目ID
-        返回:
-            List[TemplateResponse]: 入场策略模板列表，包含模板的基本信息、配置模式等
-        """
-        return await self.get_templates_by_project(project_id, EnterStrategy)
-    
-    async def get_exit_strategy_by_project(self, project_id: int) -> List[TemplateResponse]:
-        """
-        获取指定项目的出场策略模板列表
-        参数:
-            project_id: 项目ID
-        返回:
-            List[TemplateResponse]: 出场策略模板列表，包含模板的基本信息、配置模式等
-        """
-        return await self.get_templates_by_project(project_id, ExitStrategy)
+    # 进出场子策略模板接口已移除
     
     async def get_strategy_fabricator_by_project(self, project_id: int) -> List[TemplateResponse]:
         """
@@ -315,7 +297,8 @@ class LeekTemplateManager(Generic[T]):
         返回:
             List[TemplateResponse]: 策略风控模板列表，包含模板的基本信息、配置模式等
         """
-        return await self.get_templates_by_project(project_id, PositionPolicy)
+        from leek_core.sub_strategy import SubStrategy
+        return await self.get_templates_by_project(project_id, SubStrategy)
 
     async def update_manager_dirs(self, manager: TemplateManager, directories: List[str]):
         """
