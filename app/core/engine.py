@@ -507,7 +507,23 @@ class EngineManager:
             
         client = self.clients.pop(instance_id, None)
         if client:
-            await client.stop()
+            try:
+                # 添加整体超时保护
+                logger.info(f"开始停止客户端: {instance_id}")
+                await asyncio.wait_for(client.stop(), timeout=15.0)
+                logger.info(f"客户端停止完成: {instance_id}")
+            except asyncio.TimeoutError:
+                logger.error(f"停止客户端超时: {instance_id}")
+                # 强制终止进程
+                if client.process and client.process.is_alive():
+                    logger.warning(f"强制终止超时进程: {instance_id} (PID: {client.process.pid})")
+                    client.process.kill()
+                    try:
+                        client.process.join(timeout=2)
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.error(f"停止客户端异常: {instance_id}: {e}", exc_info=True)
 
     def get_client(self, project_id: str) -> Optional[GrpcEngineClient]:
         """获取客户端"""
