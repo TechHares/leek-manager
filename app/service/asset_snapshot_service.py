@@ -26,7 +26,6 @@ def save_asset_snapshot_from_position_image(project_id: int, data: dict) -> Asse
             snapshot_time = now.replace(minute=0, second=0, microsecond=0)
             
             # 从数据中提取资产信息
-            activate_amount = Decimal(data.get('activate_amount', '0'))
             pnl = Decimal(data.get('pnl', '0'))
             friction = Decimal(data.get('friction', '0'))
             fee = Decimal(data.get('fee', '0'))
@@ -39,6 +38,7 @@ def save_asset_snapshot_from_position_image(project_id: int, data: dict) -> Asse
 
             position_amount = int(data.get('position', {}).get('position_count', '0'))
             principal = Decimal(data.get('capital', {}).get('principal', '0'))
+            activate_amount = Decimal(data.get('capital', {}).get('available_balance', '0'))
             
             # 创建快照对象
             snapshot_data = AssetSnapshotCreate(

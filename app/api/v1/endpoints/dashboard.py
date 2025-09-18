@@ -102,7 +102,6 @@ async def get_dashboard_asset(
         if not_end_time and engine:
             position_data = await engine.invoke("get_position_state")
             # 从数据中提取资产信息
-            activate_amount = Decimal(position_data.get('activate_amount', '0'))
             pnl = Decimal(position_data.get('pnl', '0'))
             friction = Decimal(position_data.get('friction', '0'))
             fee = Decimal(position_data.get('fee', '0'))
@@ -112,6 +111,7 @@ async def get_dashboard_asset(
             principal = Decimal(position_data.get('capital', {}).get('principal', '0'))
             
             position_amount = int(position_data.get('position', {}).get('position_count', 0))
+            activate_amount = Decimal(position_data.get('capital', {}).get('available_balance', '0'))
             
             snapshot = AssetSnapshot(project_id=project_id,
                 snapshot_time=datetime.now(),
@@ -418,7 +418,7 @@ async def get_position_status(
                 position_data = await engine.invoke("get_position_state")
             current_data = {
                 "total_amount": Decimal(position_data.get('total_value', '0')),
-                "activate_amount": Decimal(position_data.get('activate_amount', '0')),
+                "activate_amount": Decimal(position_data.get('capital', {}).get('available_balance', '0')),
                 "pnl": Decimal(position_data.get('pnl', '0')),
                 "friction": Decimal(position_data.get('friction', '0')),
                 "fee": Decimal(position_data.get('fee', '0')),
