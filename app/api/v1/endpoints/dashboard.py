@@ -254,11 +254,22 @@ async def get_dashboard_asset(
                     t2 = _parse_time(snaps_sorted[-1].get('snapshot_time'))
                     days = max(1e-9, (t2 - t1).total_seconds() / 86400.0)
                     total_ret = end_amt / start_amt - 1.0
-                    # 窗口过短使用线性年化，避免夸大（常见做法：<30天不采用复利外推）
-                    if days >= 30.0:
-                        ann = (1.0 + total_ret) ** (365.0 / days) - 1.0
-                    else:
+                    
+                    # 改进年化收益率计算逻辑，避免短期数据产生夸大的年化收益率
+                    if days < 7.0:
+                        # 小于7天：不进行年化，直接显示实际收益率
+                        ann = total_ret
+                    elif days < 30.0:
+                        # 7-30天：使用线性年化，避免复利夸大
                         ann = total_ret * (365.0 / days)
+                        # 对线性年化结果进行合理性限制，避免过度夸大
+                        ann = min(ann, 10.0)  # 限制最大1000%年化收益率
+                    else:
+                        # 大于30天：使用复利年化
+                        ann = (1.0 + total_ret) ** (365.0 / days) - 1.0
+                        # 对复利年化结果进行合理性限制
+                        ann = min(ann, 20.0)  # 限制最大2000%年化收益率
+                    
                     performance_metrics['annualized_return'] = float(ann)
         except Exception:
             pass
