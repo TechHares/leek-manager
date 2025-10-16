@@ -1,8 +1,30 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import asyncio
+import json
+import traceback
+from datetime import datetime
+from decimal import Decimal
+from typing import Any, Dict, List, Optional
+
+from sqlalchemy.orm import Session
+
+from app.models.backtest import BacktestTask
+from app.utils.series_codec import encode_time_series, encode_values
+from leek_core.engine import (
+    EnhancedBacktester, BacktestConfig, BacktestMode, OptimizationObjective,
+    BacktestResult, WalkForwardResult, NormalBacktestResult
+)
+from leek_core.models import TimeFrame, TradeInsType
+from leek_core.utils import get_logger
+from app.db.session import db_connect
+from app.schemas.backtest import EnhancedBacktestCreate
+
+logger = get_logger(__name__)
+
 """
-Enhanced Backtest Service - 增强型回测服务
+Enhanced Backtest Service - 回测服务
 
 负责：
 1. 回测任务的创建、调度和管理
@@ -10,35 +32,6 @@ Enhanced Backtest Service - 增强型回测服务
 3. 并行执行控制
 4. 进度跟踪和状态更新
 """
-
-import asyncio
-import json
-import time
-import traceback
-from datetime import datetime
-from decimal import Decimal
-from typing import Any, Dict, List, Optional, Callable
-
-from sqlalchemy.orm import Session
-
-from app.core.config import settings
-from app.db.session import get_db
-from app.models.backtest import BacktestTask
-from app.utils.series_codec import encode_time_series, encode_values
-from leek_core.engine import (
-    EnhancedBacktester, BacktestConfig, BacktestMode, OptimizationObjective,
-    BacktestResult, ParameterSearchResult, WalkForwardResult, WindowResult, NormalBacktestResult
-)
-from leek_core.models import TimeFrame, TradeInsType
-from leek_core.data import ClickHouseKlineDataSource
-from leek_core.utils import get_logger, DateTimeUtils
-from app.db.session import db_connect
-from app.models.project_config import ProjectConfig
-from app.schemas.backtest import EnhancedBacktestCreate
-
-logger = get_logger(__name__)
-
-
 class EnhancedBacktestService:
     """增强型回测服务"""
     
@@ -131,8 +124,6 @@ class EnhancedBacktestService:
         
         if isinstance(result, BacktestResult):
             await self._process_single_backtest_result(db, task_id, result)
-        elif isinstance(result, ParameterSearchResult):
-            await self._process_parameter_search_result(db, task_id, result)
         elif isinstance(result, WalkForwardResult):
             await self._process_walk_forward_result(db, task_id, result)
         elif isinstance(result, NormalBacktestResult):
@@ -204,72 +195,6 @@ class EnhancedBacktestService:
             task.loss_sum = metrics.avg_loss * metrics.loss_trades if metrics.loss_trades > 0 else 0.0
             task.profit_count = metrics.win_trades
             task.loss_count = metrics.loss_trades
-            
-            db.commit()
-    
-    async def _process_parameter_search_result(self, db: Session, task_id: int, result: ParameterSearchResult):
-        """处理参数搜索结果"""
-        
-        # 构建窗口数据
-        windows_data = []
-        for params, backtest_result in result.all_results:
-            # 压缩数据
-            compressed_times = encode_time_series(backtest_result.equity_times)
-            compressed_equity = encode_values(backtest_result.equity_curve)
-            compressed_drawdown = encode_values(backtest_result.drawdown_curve) if backtest_result.drawdown_curve else None
-            
-            window_data = {
-                "symbol": backtest_result.config["symbol"],
-                "timeframe": backtest_result.config["timeframe"],
-                "params": params,
-                "metrics": backtest_result.metrics.to_dict(),
-                "equity_times": compressed_times,
-                "equity_values": compressed_equity,
-                "drawdown_curve": compressed_drawdown,
-                "trades": backtest_result.trades[:100],  # 限制交易记录数量
-                "execution_time": backtest_result.execution_time
-            }
-            windows_data.append(window_data)
-        
-        # 构建汇总数据
-        summary_data = {
-            "parameter_search": {
-                "best_params": result.best_params,
-                "best_score": result.best_score,
-                "total_combinations": result.total_combinations,
-                "search_time": result.search_time,
-                "optimization_objective": result.all_results[0][1].config["optimization_objective"] if result.all_results else "unknown"
-            }
-        }
-        
-        # 计算聚合指标
-        all_metrics = [br.metrics for _, br in result.all_results]
-        sharpe_values = [m.sharpe_ratio for m in all_metrics]
-        mdd_values = [m.max_drawdown for m in all_metrics]
-        trades_values = [float(m.total_trades) for m in all_metrics]
-        
-        # 更新数据库
-        task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
-        if task:
-            task.windows = windows_data
-            task.summary = summary_data
-            task.windows_count = len(windows_data)
-
-            # 更新聚合指标
-            if all_metrics:
-                best_result = next((br for p, br in result.all_results if p == result.best_params), None)
-                if best_result:
-                    task.sharpe_median = best_result.metrics.sharpe_ratio
-                    task.sharpe_p25 = self._calculate_percentile(sharpe_values, 25)
-                    task.mdd_median = self._calculate_median(mdd_values)
-                    task.trades_median = self._calculate_median(trades_values)
-                    task.total_return = best_result.metrics.total_return
-                    task.annual_return = best_result.metrics.annual_return
-                    task.total_trades = best_result.metrics.total_trades
-                    task.profit_factor = best_result.metrics.profit_factor
-                    task.win_loss_ratio = best_result.metrics.win_loss_ratio
-                    task.avg_win = best_result.metrics.avg_win
-                    task.avg_loss = best_result.metrics.avg_loss
             
             db.commit()
     
