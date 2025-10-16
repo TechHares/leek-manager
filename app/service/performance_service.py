@@ -482,13 +482,28 @@ class PerformanceAnalysisService:
                 'avg_holding_time': 0.0,
                 'total_trades': 0,
                 'winning_trades': 0,
-                'losing_trades': 0
+                'losing_trades': 0,
+                'long_win_rate': 0.0,
+                'short_win_rate': 0.0
             }
         
         # 胜率
         winning_trades = [o for o in closed_orders if o.pnl > 0]
         losing_trades = [o for o in closed_orders if o.pnl < 0]
         win_rate = len(winning_trades) / len(closed_orders)
+        
+        # 做多和做空交易分类
+        # 支持多种side值格式：字符串'LONG'/'SHORT'，数字1/2，或枚举值
+        long_orders = [o for o in closed_orders if str(o.side) in ['LONG', '1', 'PositionSide.LONG']]
+        short_orders = [o for o in closed_orders if str(o.side) in ['SHORT', '2', 'PositionSide.SHORT']]
+        
+        # 做多胜率
+        long_winning_trades = [o for o in long_orders if o.pnl > 0]
+        long_win_rate = len(long_winning_trades) / len(long_orders) if long_orders else 0.0
+        
+        # 做空胜率
+        short_winning_trades = [o for o in short_orders if o.pnl > 0]
+        short_win_rate = len(short_winning_trades) / len(short_orders) if short_orders else 0.0
         
         # 盈亏比
         avg_win = float(sum(o.pnl for o in winning_trades) / len(winning_trades)) if winning_trades else 0
@@ -510,7 +525,9 @@ class PerformanceAnalysisService:
             'avg_holding_time': avg_holding_time,
             'total_trades': len(closed_orders),
             'winning_trades': len(winning_trades),
-            'losing_trades': len(losing_trades)
+            'losing_trades': len(losing_trades),
+            'long_win_rate': long_win_rate,
+            'short_win_rate': short_win_rate
         }
     
     def _calculate_utilization_metrics(self, orders: List[Order], 

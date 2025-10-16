@@ -51,6 +51,8 @@ class BacktestTask(BaseModel):
     # 冗余的衍生指标（避免列表接口解析大 JSON）
     win_rate = Column(Float, nullable=True)  # 窗口胜率
     trade_win_rate = Column(Float, nullable=True)  # 交易胜率（基于订单）
+    long_win_rate = Column(Float, nullable=True)  # 做多胜率
+    short_win_rate = Column(Float, nullable=True)  # 做空胜率
     total_return = Column(Float, nullable=True)  # 总收益率
     annual_return = Column(Float, nullable=True)  # 年化收益率
     total_trades = Column(Integer, nullable=True)  # 总交易次数（sum of window.test_trades）

@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = ""
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
     
+    # 回测相关配置
+    BACKTEST_MAX_WORKERS: int = 4
+    BACKTEST_TIMEOUT_SECONDS: int = 3600  # 1小时超时
+    
     def __init__(self, **kwargs):
         # 检查SECRET_KEY是否存在，不存在则生成一个
         secret_key = os.getenv("LEEK_SECRET_KEY")
@@ -48,6 +52,8 @@ class Settings(BaseSettings):
         # 更新kwargs中的值
         kwargs["SECRET_KEY"] = secret_key
         kwargs["ACCESS_TOKEN_EXPIRE_MINUTES"] = int(os.getenv("LEEK_ACCESS_TOKEN_EXPIRE_MINUTES", 1440))
+        kwargs["BACKTEST_MAX_WORKERS"] = int(os.getenv("LEEK_BACKTEST_MAX_WORKERS", 4))
+        kwargs["BACKTEST_TIMEOUT_SECONDS"] = int(os.getenv("LEEK_BACKTEST_TIMEOUT_SECONDS", 3600))
         
         super().__init__(**kwargs)
 

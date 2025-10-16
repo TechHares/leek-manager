@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import defer
 from typing import Any, Dict, Optional, List
@@ -7,14 +7,17 @@ from datetime import datetime
 from app.api import deps
 from app.models.backtest import BacktestTask
 from app.models.backtest_config import BacktestConfig as BacktestConfigModel
+from app.models.project_config import ProjectConfig as ProjectConfigModel
 from app.schemas.backtest import (
-    WalkForwardCreate, BacktestTaskOut, BacktestTaskBriefOut,
-    BacktestConfigCreate, BacktestConfigUpdate, BacktestConfigOut
+    BacktestTaskOut, BacktestTaskBriefOut,
+    BacktestConfigCreate, BacktestConfigUpdate, BacktestConfigOut,
+    EnhancedBacktestCreate
 )
 from app.schemas.common import PageResponse
 from leek_core.utils import get_logger
 from app.core.scheduler import scheduler
 from app.utils.series_codec import maybe_decode_values, maybe_decode_times
+from app.service.enhanced_backtest_service import enhanced_backtest_service
 
 logger = get_logger(__name__)
 
@@ -77,53 +80,6 @@ def _attach_derived_metrics(task: BacktestTask, avoid_windows: bool = False) -> 
     return task
 
 
-@router.post("/backtest/walk-forward", response_model=BacktestTaskOut)
-async def create_walk_forward(
-    req: WalkForwardCreate,
-    db: Session = Depends(deps.get_db_session),
-    project_id: int = Depends(deps.get_project_id),
-):
-    task = BacktestTask(
-        project_id=project_id,
-        name=req.name,
-        type="walk_forward",
-        config=req.model_dump(),
-        status="pending",
-    )
-    # 冗余关键字段，便于列表展示/过滤
-    try:
-        cfg = task.config
-        task.strategy_class = cfg.get("strategy_class")
-        task.data_config_id = cfg.get("data_config_id")
-        task.cost_config_id = cfg.get("cost_config_id")
-        task.start = cfg.get("start")
-        task.end = cfg.get("end")
-        task.train_days = int(cfg.get("train_days")) if cfg.get("train_days") is not None else None
-        task.test_days = int(cfg.get("test_days")) if cfg.get("test_days") is not None else None
-        task.embargo_days = int(cfg.get("embargo_days")) if cfg.get("embargo_days") is not None else None
-        task.mode = cfg.get("mode")
-        task.cv_splits = int(cfg.get("cv_splits")) if cfg.get("cv_splits") is not None else None
-        task.max_workers = int(cfg.get("max_workers")) if cfg.get("max_workers") is not None else None
-        task.symbols = cfg.get("symbols")
-        task.timeframes = cfg.get("timeframes")
-    except Exception:
-        pass
-    db.add(task)
-    db.commit()
-    db.refresh(task)
-
-    # 调度后台执行
-    # 使用进程池执行，避免与主进程GIL竞争，适合CPU密集的回测
-    scheduler.add_date_job(
-        func='app.service.walk_forward_service:run_walk_forward_task_job',
-        run_date=datetime.now(),
-        args=(task.id,),
-        id=f"wf_{task.id}",
-        name=f"walk_forward_{task.id}",
-        executor="processpool",
-    )
-
-    return _attach_derived_metrics(task)
 
 
 def _update_status(task_id: int, status: str, progress: Optional[float] = None, started_at: Optional[datetime] = None, finished_at: Optional[datetime] = None, error: Optional[str] = None, windows=None, summary=None):
@@ -266,9 +222,10 @@ async def list_backtest_tasks(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
 ):
+    # 只defer大字段windows和summary，保留config用于复制功能
     query = db.query(BacktestTask).options(
         defer(BacktestTask.windows),
-        defer(BacktestTask.summary),
+        defer(BacktestTask.summary)
     ).filter(BacktestTask.project_id == project_id)
     if name:
         query = query.filter(BacktestTask.name.like(f"%{name}%"))
@@ -298,8 +255,7 @@ async def list_backtest_tasks(
         .limit(size)
         .all()
     )
-    # 关键指标已冗余在表结构，直接返回
-    items = items
+    
     return PageResponse(total=total, page=page, size=size, items=items)
 
 
@@ -321,6 +277,125 @@ async def delete_backtest_task(
     return {"status": "success"}
 
 
-# （已向上移动 config 路由，避免与 /backtest/{task_id} 冲突）
+# ==================== Enhanced Backtest APIs ====================
+
+@router.post("/backtest/enhanced", response_model=BacktestTaskOut)
+async def create_enhanced_backtest(
+    req: EnhancedBacktestCreate,
+    db: Session = Depends(deps.get_db_session),
+    project_id: int = Depends(deps.get_project_id),
+):
+    """创建增强型回测任务"""
+    try:
+        project_config = db.query(ProjectConfigModel).filter(ProjectConfigModel.project_id == project_id).first()
+        data_config = db.query(BacktestConfigModel).filter(BacktestConfigModel.id == req.data_config_id).first()
+        req.data_source_config = data_config.params
+        req.data_source = data_config.class_name
+        # 创建数据库记录
+        task = BacktestTask(
+            project_id=project_id,
+            name=req.name,
+            type=req.mode,
+            config=req.model_dump(),
+            status="pending",
+            progress=0.0,
+            
+            # 冗余字段
+            strategy_class=req.strategy_class,
+            data_config_id=req.data_config_id,
+            cost_config_id=req.cost_config_id,
+            start=str(req.start_time) if req.start_time else None,
+            end=str(req.end_time) if req.end_time else None,
+            symbols=req.symbols,
+            timeframes=[tf.value if hasattr(tf, 'value') else str(tf) for tf in (req.timeframes or [])],
+            max_workers=req.max_workers,
+            train_days=req.train_days,
+            test_days=req.test_days,
+            embargo_days=req.embargo_days,
+            mode=req.mode,
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+        await enhanced_backtest_service.create_backtest_task(task=task, req=req, mount_dirs=project_config.mount_dirs)
+        return task
+    except Exception as e:
+        logger.error(f"Failed to create enhanced backtest: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/backtest/enhanced/{task_id}/results")
+async def get_enhanced_backtest_results(
+    task_id: int,
+    db: Session = Depends(deps.get_db_session),
+    project_id: int = Depends(deps.get_project_id),
+    format: str = Query("json", description="返回格式：json, csv"),
+):
+    """获取增强型回测结果"""
+    # 验证任务属于当前项目
+    task = db.query(BacktestTask).filter(
+        BacktestTask.id == task_id, 
+        BacktestTask.project_id == project_id
+    ).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    if task.status != "completed":
+        raise HTTPException(status_code=400, detail="Task not completed")
+    
+    # 获取详细结果数据
+    task_with_data = await enhanced_backtest_service.get_backtest_task_with_decompressed_data(
+        db, task_id, expand_series=True
+    )
+    
+    if format.lower() == "csv":
+        # TODO: 实现CSV格式导出
+        raise HTTPException(status_code=501, detail="CSV export not implemented yet")
+    
+    # 获取完整的性能指标
+    windows = task_with_data.windows if task_with_data else task.windows
+    detailed_metrics = {}
+    combined = None
+    # normal 模式：使用汇总指标，并解压组合曲线
+    if isinstance(task.summary, dict) and 'normal' in task.summary:
+        normal = task.summary.get('normal') or {}
+        detailed_metrics = normal.get('aggregated_metrics') or {}
+        try:
+            c = normal.get('combined') or {}
+            if isinstance(c, dict):
+                times = c.get('equity_times')
+                values = c.get('equity_values')
+                # 解压
+                if times:
+                    times = maybe_decode_times(times)
+                if values:
+                    values = maybe_decode_values(values)
+                combined = { 'equity_times': times, 'equity_values': values }
+        except Exception:
+            combined = None
+    else:
+        # 取首个窗口的详细指标
+        if windows and len(windows) > 0:
+            first_window = windows[0]
+            if isinstance(first_window, dict):
+                detailed_metrics = first_window.get('test_metrics') or first_window.get('metrics') or {}
+    
+    # 构建结果数据
+    results = {
+        "task_id": task_id,
+        "name": task.name,
+        "status": task.status,
+        "config": task.config,
+        "summary": task.summary,
+        "windows": windows,
+        "metrics": detailed_metrics,  # normal: 聚合指标；其它：首窗口指标
+        "combined": combined,  # normal 模式下的组合净值
+        "artifacts": task.artifacts,
+        "created_at": task.created_at,
+        "finished_at": task.finished_at,
+        "execution_time": (task.finished_at - task.started_at).total_seconds() if task.finished_at and task.started_at else None
+    }
+    
+    return results
 
 
