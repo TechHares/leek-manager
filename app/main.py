@@ -2,7 +2,6 @@ from fastapi import FastAPI, status, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from leek_core import engine
 from app.api.v1.endpoints import config, auth, users, rbac, projects, executors, datasources, position, strategies, signal, order, dashboard, transaction, performance
 from app.api.v1.endpoints import risk as risk_endpoints
 from app.api.v1.endpoints import backtest as backtest_endpoints

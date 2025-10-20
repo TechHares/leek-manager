@@ -425,7 +425,7 @@ class EngineManager:
             data_source_instance_id=int(data.get('data_source_instance_id')),
             strategy_instance_id=str(data.get('strategy_instance_id')),
             data_source_class_name="",
-            strategy_class_name=source.extra.get('class_name', ''),
+            strategy_class_name=data.get('strategy_cls'),
             signal_time=datetime.fromtimestamp(data.get('signal_time') / 1000) if data.get('signal_time') else datetime.now(),
             assets=assets,
             config=cfg,

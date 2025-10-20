@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.models.backtest import BacktestTask
 from app.utils.series_codec import encode_time_series, encode_values
-from leek_core.engine import (
+from leek_core.backtest import (
     EnhancedBacktester, BacktestConfig, BacktestMode, OptimizationObjective,
     BacktestResult, WalkForwardResult, NormalBacktestResult
 )
