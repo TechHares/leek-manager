@@ -78,7 +78,13 @@ async def list_positions(
         id_to_name = {sid: sname for sid, sname in strategies}
         for p in items:
             setattr(p, "instance_name", id_to_name.get(p.strategy_id))
-
+    
+    if any(not p.is_closed for p in items):
+        client = engine_manager.get_client(project_id=project_id)
+        if client:
+            unpnl = await client.invoke("get_unpnl") or {}
+            for p in items:
+                p.pnl = unpnl.get(str(p.id), p.pnl)
     return PageResponse(total=total, page=page, size=size, items=items)
 
 @router.get("/positions/{position_id}", response_model=PositionOut)
@@ -97,6 +103,11 @@ async def get_position(
     strategy = db.query(Strategy.name).filter(Strategy.id == position.strategy_id, Strategy.project_id == project_id).first()
     if strategy:
         setattr(position, "instance_name", strategy[0])
+    if not position.is_closed:
+        client = engine_manager.get_client(project_id=project_id)
+        if client:
+            unpnl = await client.invoke("get_unpnl") or {}
+            position.pnl = unpnl.get(str(position.id), position.pnl)
     return position
 
 @router.patch("/positions/{position_id}", response_model=PositionOut)
