@@ -175,7 +175,9 @@ async def get_dashboard_asset(
                 "fee": float(snapshot.fee),
                 "friction": float(snapshot.friction),
                 "virtual_pnl": float(snapshot.virtual_pnl),
-                "position_amount": snapshot.position_amount
+                "position_amount": snapshot.position_amount,
+                # 净利润：总资产减去本金
+                "net_profit": float(snapshot.total_amount) - float(snapshot.principal or 0)
             })
         
         strategy_pnl_formatted = []
@@ -211,33 +213,48 @@ async def get_dashboard_asset(
             if last_ts:
                 metrics_end = max(metrics_start, max(end_time, last_ts))
 
-        daily_values = get_daily_snapshots_from_hourly(asset_snapshots_formatted, metrics_start, metrics_end)
-        
-        # 新增：使用原始小时级数据计算最大回撤
-        hourly_values = [float(snapshot.get("total_amount", 0)) for snapshot in asset_snapshots_formatted]
-        hourly_performance = calculate_performance_from_values(hourly_values, 365*24)  # 小时级数据，一年8760小时
-        
-        # 方案A扩展：将首尾日度点替换为区间内首尾快照（与曲线完全一致）
+        # 基于净利润口径构建序列
+        # 最新本金（区间末笔）
+        last_principal = 0.0
         try:
-            if daily_values and asset_snapshots_formatted:
-                first_total_amount = float(asset_snapshots_formatted[0].get("total_amount", 0.0))
-                last_total_amount = float(asset_snapshots_formatted[-1].get("total_amount", 0.0))
-                # 覆盖首点
-                if first_total_amount is not None:
-                    daily_values[0] = float(first_total_amount)
-                # 覆盖尾点
-                if last_total_amount is not None:
-                    daily_values[-1] = float(last_total_amount)
+            if asset_snapshots_formatted:
+                last_principal = float(asset_snapshots_formatted[-1].get("principal", 0.0))
+        except Exception:
+            last_principal = 0.0
+
+        # 日级：取每天0点的净利润并叠加最新本金，得到用于绩效计算的等效权益曲线
+        daily_net_profit_values = get_daily_snapshots_from_hourly(
+            asset_snapshots_formatted, metrics_start, metrics_end, field='net_profit'
+        )
+        # 小时级：直接取原始小时净利润序列
+        hourly_net_profit_values = [float(snapshot.get("net_profit", 0)) for snapshot in asset_snapshots_formatted]
+        
+        # 方案A扩展：将首尾日度点替换为区间内首尾快照（净利润口径）
+        try:
+            if daily_net_profit_values and asset_snapshots_formatted:
+                first_np = float(asset_snapshots_formatted[0].get("net_profit", 0.0))
+                last_np = float(asset_snapshots_formatted[-1].get("net_profit", 0.0))
+                if first_np is not None:
+                    daily_net_profit_values[0] = float(first_np)
+                if last_np is not None:
+                    daily_net_profit_values[-1] = float(last_np)
         except Exception:
             pass
-        performance_metrics = calculate_performance_from_values(daily_values, 365)
+
+        # 构造等效权益曲线 E' = P_last + net_profit
+        equity_prime_daily = [last_principal + v for v in daily_net_profit_values]
+        equity_prime_hourly = [last_principal + v for v in hourly_net_profit_values]
+
+        # 使用净利润口径计算所有绩效指标（年化、波动、夏普、回撤）
+        performance_metrics = calculate_performance_from_values(equity_prime_daily, 365)
+        hourly_performance = calculate_performance_from_values(equity_prime_hourly, 365*24)  # 小时级数据，一年8760小时
         
-        # 新增：如果小时级数据的最大回撤更大，则使用小时级数据
+        # 新增：如果小时级数据的最大回撤更大，则使用小时级数据（同口径）
         if hourly_performance.get("max_drawdown", {}).get("max_drawdown", 0) < performance_metrics.get("max_drawdown", {}).get("max_drawdown", 0):
             performance_metrics["max_drawdown"] = hourly_performance["max_drawdown"]
             performance_metrics["_hourly_mdd_used"] = True  # 标记使用了小时级数据
         
-        # 使用端点法基于首尾快照计算年化（与前端曲线口径完全一致）
+        # 使用端点法基于首尾快照计算年化（净利润口径的一致性处理）
         try:
             def _parse_time(ts):
                 if isinstance(ts, str):
@@ -247,8 +264,9 @@ async def get_dashboard_asset(
                 return ts
             if len(asset_snapshots_formatted) >= 2:
                 snaps_sorted = sorted(asset_snapshots_formatted, key=lambda x: x.get('snapshot_time'))
-                start_amt = float(snaps_sorted[0].get('total_amount', 0.0))
-                end_amt = float(snaps_sorted[-1].get('total_amount', 0.0))
+                # 端点法改为等效权益 E' = P_last + net_profit
+                start_amt = last_principal + float(snaps_sorted[0].get('net_profit', 0.0))
+                end_amt = last_principal + float(snaps_sorted[-1].get('net_profit', 0.0))
                 if start_amt > 0:
                     t1 = _parse_time(snaps_sorted[0].get('snapshot_time'))
                     t2 = _parse_time(snaps_sorted[-1].get('snapshot_time'))
@@ -310,40 +328,51 @@ async def get_dashboard_asset(
             })
         
         # 计算时期对比（使用日级数据处理）
-        current_daily_values = get_daily_snapshots_from_hourly(asset_snapshots_formatted, metrics_start, metrics_end)
-        # 同样应用方案A到当前时期数据（首尾覆盖）
+        # 基于净利润口径计算时期对比
+        # 当前时期
+        current_last_principal = last_principal
         try:
-            if current_daily_values and asset_snapshots_formatted:
-                first_total_amount = float(asset_snapshots_formatted[0].get("total_amount", 0.0))
-                last_total_amount = float(asset_snapshots_formatted[-1].get("total_amount", 0.0))
-                if first_total_amount is not None:
-                    current_daily_values[0] = float(first_total_amount)
-                if last_total_amount is not None:
-                    current_daily_values[-1] = float(last_total_amount)
+            if asset_snapshots_formatted:
+                current_last_principal = float(asset_snapshots_formatted[-1].get("principal", 0.0))
         except Exception:
             pass
-        previous_daily_values = get_daily_snapshots_from_hourly(previous_snapshots_formatted, previous_start, previous_end)
-        # 保持口径一致：上一时期也使用该时期的首尾快照覆盖
+        current_daily_np = get_daily_snapshots_from_hourly(asset_snapshots_formatted, metrics_start, metrics_end, field='net_profit')
         try:
-            if previous_daily_values and previous_snapshots_formatted:
-                prev_first = float(previous_snapshots_formatted[0].get("total_amount", 0.0))
-                prev_last = float(previous_snapshots_formatted[-1].get("total_amount", 0.0))
-                if prev_first is not None:
-                    previous_daily_values[0] = float(prev_first)
-                if prev_last is not None:
-                    previous_daily_values[-1] = float(prev_last)
+            if current_daily_np and asset_snapshots_formatted:
+                c_first = float(asset_snapshots_formatted[0].get('net_profit', 0.0))
+                c_last = float(asset_snapshots_formatted[-1].get('net_profit', 0.0))
+                current_daily_np[0] = float(c_first)
+                current_daily_np[-1] = float(c_last)
         except Exception:
             pass
-        
-        # 计算时期对比
-        current_metrics = calculate_performance_from_values(current_daily_values, 365)
-        previous_metrics = calculate_performance_from_values(previous_daily_values, 365)
-        # 对时期对比也使用端点法覆盖年化
+        current_equity_prime = [current_last_principal + v for v in current_daily_np]
+        current_metrics = calculate_performance_from_values(current_equity_prime, 365)
+
+        # 上一时期
+        prev_last_principal = 0.0
+        try:
+            if previous_snapshots_formatted:
+                prev_last_principal = float(previous_snapshots_formatted[-1].get('principal', 0.0))
+        except Exception:
+            prev_last_principal = 0.0
+        previous_daily_np = get_daily_snapshots_from_hourly(previous_snapshots_formatted, previous_start, previous_end, field='net_profit')
+        try:
+            if previous_daily_np and previous_snapshots_formatted:
+                p_first = float(previous_snapshots_formatted[0].get('net_profit', 0.0))
+                p_last = float(previous_snapshots_formatted[-1].get('net_profit', 0.0))
+                previous_daily_np[0] = float(p_first)
+                previous_daily_np[-1] = float(p_last)
+        except Exception:
+            pass
+        previous_equity_prime = [prev_last_principal + v for v in previous_daily_np]
+        previous_metrics = calculate_performance_from_values(previous_equity_prime, 365)
+
+        # 对时期对比也使用端点法覆盖年化（净利润口径）
         try:
             if len(asset_snapshots_formatted) >= 2:
                 snaps_sorted = sorted(asset_snapshots_formatted, key=lambda x: x.get('snapshot_time'))
-                start_amt = float(snaps_sorted[0].get('total_amount', 0.0))
-                end_amt = float(snaps_sorted[-1].get('total_amount', 0.0))
+                start_amt = current_last_principal + float(snaps_sorted[0].get('net_profit', 0.0))
+                end_amt = current_last_principal + float(snaps_sorted[-1].get('net_profit', 0.0))
                 if start_amt > 0:
                     t1 = _parse_time(snaps_sorted[0].get('snapshot_time'))
                     t2 = _parse_time(snaps_sorted[-1].get('snapshot_time'))
@@ -356,8 +385,8 @@ async def get_dashboard_asset(
                     current_metrics['annualized_return'] = float(ann)
             if len(previous_snapshots_formatted) >= 2:
                 prev_sorted = sorted(previous_snapshots_formatted, key=lambda x: x.get('snapshot_time'))
-                p_start = float(prev_sorted[0].get('total_amount', 0.0))
-                p_end = float(prev_sorted[-1].get('total_amount', 0.0))
+                p_start = prev_last_principal + float(prev_sorted[0].get('net_profit', 0.0))
+                p_end = prev_last_principal + float(prev_sorted[-1].get('net_profit', 0.0))
                 if p_start > 0:
                     pt1 = _parse_time(prev_sorted[0].get('snapshot_time'))
                     pt2 = _parse_time(prev_sorted[-1].get('snapshot_time'))
