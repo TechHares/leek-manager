@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "leek-manager"
-version = "1.7.2"
+version = "1.7.3"
 description = "Leek Manager Service - 量化交易管理系统"
 authors = ["shenglin.li <764935704@qq.com>"]
 readme = "README.md"
