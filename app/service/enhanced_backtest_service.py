@@ -86,6 +86,7 @@ class EnhancedBacktestService:
                 # 设置进度回调
                 def progress_callback(current: int, total: int):
                     progress = current / total if total > 0 else 0.0
+                    logger.info(f"Backtest progress: {current} / {total}, progress: {progress}")
                     self._update_task_progress(db, config.id, progress)
                 # 创建回测器
                 backtester = EnhancedBacktester(config, progress_callback)
