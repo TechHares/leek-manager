@@ -4,6 +4,7 @@
 import asyncio
 import json
 import traceback
+from statistics import mean, median
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
@@ -71,66 +72,88 @@ class EnhancedBacktestService:
             data_source=req.data_source,
             data_source_config=req.data_source_config,
             mount_dirs=mount_dirs,
+            use_cache=(req.use_cache if getattr(req, 'use_cache', None) is not None else bool(getattr(req, 'use_shared_memory_cache', False))),
+            log_file=bool(getattr(req, 'log_file', False)),
         )
         # 异步执行回测
         asyncio.create_task(self._execute_backtest_async(backtest_config))
     
     async def _execute_backtest_async(self, config: BacktestConfig):
         """异步执行回测"""
-        with db_connect() as db:
-            try:
-                # 更新任务状态
-                self._update_task_status(db, config.id, "running", 0.0, datetime.now())
-                
-                
-                # 设置进度回调
-                def progress_callback(current: int, total: int):
-                    progress = current / total if total > 0 else 0.0
-                    logger.info(f"Backtest progress: {current} / {total}, progress: {progress}")
-                    self._update_task_progress(db, config.id, progress)
-                # 创建回测器
-                backtester = EnhancedBacktester(config, progress_callback)
-                
-                # 执行回测（在独立线程中运行，避免阻塞事件循环）
-                # 注意：不能用ProcessPoolExecutor，因为backtester包含不可序列化的对象
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as thread_executor:
-                    result = await asyncio.get_event_loop().run_in_executor(
-                        thread_executor, backtester.run
-                    )
-                
-                # 处理结果
-                await self._process_backtest_result(db, config.id, result)
-                
-                # 更新任务状态为完成
-                self._update_task_status(db, config.id, "completed", 1.0, finished_at=datetime.now())
+        try:
+            # 更新任务状态
+            self._update_task_status(config.id, "running", 0.0, datetime.now())
             
-            except Exception as e:
-                logger.error(f"Backtest task {config.id} failed: {e}")
-                logger.error(traceback.format_exc())
-                
-                # 更新任务状态为失败
-                self._update_task_status(
-                    db, config.id, "failed", 
-                    error=str(e)[:2000],  # 限制错误信息长度
-                    finished_at=datetime.now()
+            times_metrics = []
+            last_total = None
+            import time as _time
+            run_start = _time.time()
+            # 设置进度回调
+            def progress_callback(current: int, total: int, times: List[int]):
+                progress = current / total if total > 0 else 0.0
+                logger.info(f"窗口进度[{config.id}/{config.name}]: {current} / {total}, "
+                f"初始化: {(times[1] - times[0])/1000}s, 加载数据: {(times[2] - times[1])/1000}s, "
+                f"预处理: {(times[3] - times[2])/1000}s, 回测: {(times[4] - times[3])/1000}s, "
+                f"指标: {(times[5] - times[4])/1000}s, 总时间: {(times[5] - times[0])/1000}s")
+                times_metrics.append(times)
+                self._update_task_progress(config.id, progress)
+                nonlocal last_total
+                last_total = last_total or total
+            # 创建回测器
+            backtester = EnhancedBacktester(config, progress_callback)
+            
+            # 执行回测（在独立线程中运行，避免阻塞事件循环）
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as thread_executor:
+                result = await asyncio.get_event_loop().run_in_executor(
+                    thread_executor, backtester.run
                 )
             
-            finally:
-                # 清理运行中的任务记录
-                self.running_tasks.pop(config.id, None)
-    
-    async def _process_backtest_result(self, db: Session, task_id: int, result):
-        """处理回测结果"""
+            # 计算并保存时间指标聚合（秒）
+            if times_metrics:
+                agg = await asyncio.to_thread(
+                    self._aggregate_time_metrics,
+                    times_metrics,
+                    run_start,
+                    result,
+                    last_total,
+                    config,
+                )
+                if agg and agg.get("stages"):
+                    self._save_times_metrics(config.id, agg)
+            
+            # 处理结果
+            await self._process_backtest_result(config.id, result)
+            
+            # 更新任务状态为完成
+            self._update_task_status(config.id, "completed", 1.0, finished_at=datetime.now())
         
-        if isinstance(result, BacktestResult):
-            await self._process_single_backtest_result(db, task_id, result)
-        elif isinstance(result, WalkForwardResult):
-            await self._process_walk_forward_result(db, task_id, result)
-        elif isinstance(result, NormalBacktestResult):
-            await self._process_normal_backtest_result(db, task_id, result)
-        else:
-            raise ValueError(f"Unknown result type: {type(result)}")
+        except Exception as e:
+            logger.error(f"Backtest task {config.id} failed: {e}")
+            logger.error(traceback.format_exc())
+            
+            # 更新任务状态为失败
+            self._update_task_status(
+                config.id, "failed", 
+                error=str(e)[:2000],  # 限制错误信息长度
+                finished_at=datetime.now()
+            )
+        
+        finally:
+            # 清理运行中的任务记录
+            self.running_tasks.pop(config.id, None)
+    
+    async def _process_backtest_result(self, task_id: int, result):
+        """处理回测结果"""
+        with db_connect() as db:
+            if isinstance(result, BacktestResult):
+                await self._process_single_backtest_result(db, task_id, result)
+            elif isinstance(result, WalkForwardResult):
+                await self._process_walk_forward_result(db, task_id, result)
+            elif isinstance(result, NormalBacktestResult):
+                await self._process_normal_backtest_result(db, task_id, result)
+            else:
+                raise ValueError(f"Unknown result type: {type(result)}")
     
     async def _process_single_backtest_result(self, db: Session, task_id: int, result: BacktestResult):
         """处理单次回测结果"""
@@ -459,7 +482,6 @@ class EnhancedBacktestService:
     
     def _update_task_status(
         self, 
-        db: Session, 
         task_id: int, 
         status: str, 
         progress: Optional[float] = None,
@@ -468,25 +490,94 @@ class EnhancedBacktestService:
         error: Optional[str] = None
     ):
         """更新任务状态"""
-        task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
-        if task:
-            task.status = status
-            if progress is not None:
-                task.progress = progress
-            if started_at is not None:
-                task.started_at = started_at
-            if finished_at is not None:
-                task.finished_at = finished_at
-            if error is not None:
-                task.error = error
-            db.commit()
+        with db_connect() as db:
+            task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
+            if task:
+                task.status = status
+                if progress is not None:
+                    task.progress = progress
+                if started_at is not None:
+                    task.started_at = started_at
+                if finished_at is not None:
+                    task.finished_at = finished_at
+                if error is not None:
+                    task.error = error
+                db.commit()
     
-    def _update_task_progress(self, db: Session, task_id: int, progress: float):
+    def _update_task_progress(self, task_id: int, progress: float):
         """更新任务进度"""
-        task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
-        if task:
-            task.progress = progress
-            db.commit()
+        with db_connect() as db:
+            task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
+            if task:
+                task.progress = progress
+                db.commit()
+
+    def _save_times_metrics(self, task_id: int, metrics_json: Dict[str, Any]):
+        """保存时间指标聚合到任务表 times_metrics 字段"""
+        with db_connect() as db:
+            task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
+            if task:
+                try:
+                    task.times_metrics = metrics_json
+                    db.commit()
+                except Exception as e:
+                    logger.error(f"Failed to save times_metrics for task {task_id}: {e}")
+    
+    def _aggregate_time_metrics(self, times_metrics: List[List[int]], run_start: float, result: Any, last_total: Optional[int], config: BacktestConfig) -> Dict[str, Any]:
+        """在后台线程聚合时间指标，返回聚合结果。"""
+        import time as _time
+        if not times_metrics:
+            return {}
+        stage_names = [
+            "init", "get_data", "skip_data", "backtest", "metrics", "total"
+        ]
+        durations_by_stage = {name: [] for name in stage_names}
+
+        for t in times_metrics:
+            try:
+                if not isinstance(t, (list, tuple)) or len(t) < 6:
+                    continue
+                d_init = (t[1] - t[0]) / 1000.0
+                d_get = (t[2] - t[1]) / 1000.0
+                d_skip = (t[3] - t[2]) / 1000.0
+                d_bt = (t[4] - t[3]) / 1000.0
+                d_met = (t[5] - t[4]) / 1000.0
+                d_tot = (t[5] - t[0]) / 1000.0
+                vals = [d_init, d_get, d_skip, d_bt, d_met, d_tot]
+                if any(v is None or v != v for v in vals):
+                    continue
+                durations_by_stage["init"].append(max(d_init, 0.0))
+                durations_by_stage["get_data"].append(max(d_get, 0.0))
+                durations_by_stage["skip_data"].append(max(d_skip, 0.0))
+                durations_by_stage["backtest"].append(max(d_bt, 0.0))
+                durations_by_stage["metrics"].append(max(d_met, 0.0))
+                durations_by_stage["total"].append(max(d_tot, 0.0))
+            except Exception:
+                continue
+
+        agg: Dict[str, Any] = {"unit": "seconds", "count": 0, "stages": {}}
+        for name in stage_names:
+            ds = durations_by_stage.get(name, [])
+            if not ds:
+                continue
+            n = len(ds)
+            agg["count"] = max(agg.get("count", 0), n)
+            m = round(float(mean(ds)), 3)
+            med = round(float(median(ds)), 3)
+            p95 = round(float(self._calculate_percentile(ds, 95)), 3)
+            p99 = round(float(self._calculate_percentile(ds, 99)), 3)
+            agg["stages"][name] = {
+                "mean": m,
+                "median": med,
+                "p95": p95,
+                "p99": p99,
+            }
+
+        agg["total_time_sec"] = round(_time.time() - run_start, 3)
+        agg["execution_time"] = round(getattr(result, 'execution_time', 0), 3)
+        agg["window_count"] = int(last_total or 0)
+        agg["concurrency"] = int(getattr(config, 'max_workers', 1) or 1)
+        return agg
     
     def _calculate_median(self, values: List[float]) -> float:
         """计算中位数"""

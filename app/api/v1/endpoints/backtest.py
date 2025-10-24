@@ -386,7 +386,9 @@ async def get_enhanced_backtest_results(
         "name": task.name,
         "status": task.status,
         "config": task.config,
-        "summary": task.summary,
+        "summary": (lambda s, t: (lambda merged: merged)(
+            (lambda _s: ( _s.update({"times": getattr(t, 'times_metrics', None)}) or _s ) if isinstance(_s, dict) else _s)(dict(s or {}))
+        ))(task.summary, task),
         "windows": windows,
         "metrics": detailed_metrics,  # normal: 聚合指标；其它：首窗口指标
         "combined": combined,  # normal 模式下的组合净值

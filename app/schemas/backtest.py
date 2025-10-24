@@ -213,6 +213,10 @@ class EnhancedBacktestCreate(BaseModel):
     
     # 性能优化配置
     use_shared_memory_cache: bool = Field(False, description="是否使用共享内存缓存")
+    # 与核心一致：允许直接传 use_cache
+    use_cache: Optional[bool] = Field(None, description="是否使用缓存（别名，优先于 use_shared_memory_cache）")
+    # 日志选项：是否写入 {id}.log
+    log_file: Optional[bool] = Field(False, description="是否记录到文件（默认否）")
     cache_size_mb: int = Field(2048, description="缓存大小限制（MB）")
     mdd_median_max: Optional[float] = Field(None, description="最大回撤中位数上限")
     min_trades_per_window: Optional[int] = Field(None, description="每窗口最小交易数")

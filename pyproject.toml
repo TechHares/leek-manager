@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "leek-manager"
-version = "1.7.3"
+version = "1.7.4"
 description = "Leek Manager Service - 量化交易管理系统"
 authors = ["shenglin.li <764935704@qq.com>"]
 readme = "README.md"
@@ -32,7 +32,7 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.11,<3.13"
+python = ">=3.11,<4"
 fastapi = "0.109.2"
 uvicorn = "0.27.1"
 pydantic = "~=2.11.7"

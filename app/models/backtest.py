@@ -38,6 +38,7 @@ class BacktestTask(BaseModel):
     summary = Column(JSON, nullable=True)  # 聚合摘要
     windows = Column(JSON, nullable=True)  # 窗口级明细
     artifacts = Column(JSON, nullable=True)  # 产物路径/图表等（可选）
+    times_metrics = Column(JSON, nullable=True)  # 时间指标
 
     # 汇总结论（冗余字段，便于快速排序/筛选/展示）
     windows_count = Column(Integer, nullable=True)
