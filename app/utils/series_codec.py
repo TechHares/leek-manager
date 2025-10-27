@@ -120,3 +120,47 @@ def maybe_decode_times(obj: Any) -> Any:
     return obj
 
 
+
+# ------------------------ Downsampling helpers ------------------------
+def _calc_stride(length: int, max_points: int) -> int:
+    if max_points is None or max_points <= 0:
+        return 1
+    if length <= max_points:
+        return 1
+    # ceil division
+    return (length + max_points - 1) // max_points
+
+
+def downsample_series(times: list | None, values: list | None, max_points: int = 2100) -> tuple[list | None, list | None]:
+    """Downsample paired time/value arrays by uniform stride, preserving endpoints.
+
+    - If one of times/values is None, the other is downsampled alone.
+    - If lengths mismatch, falls back to downsampling by the shorter length.
+    - Always includes the last element.
+    """
+    if values is None:
+        return times, values
+    n = len(values) if isinstance(values, list) else 0
+    if n == 0:
+        return times, values
+    stride = _calc_stride(n, max_points)
+    if stride <= 1:
+        return times, values
+    # Build indices with endpoint preserved
+    idxs = list(range(0, n, stride))
+    if idxs[-1] != n - 1:
+        idxs.append(n - 1)
+    # Slice values
+    ds_values = [values[i] for i in idxs]
+    # Slice times if provided and list-like with compatible length
+    ds_times = None
+    if isinstance(times, list):
+        m = len(times)
+        # Use min length to avoid OOB if mismatched
+        eff_n = min(n, m)
+        eff_idxs = [i if i < eff_n else (eff_n - 1) for i in idxs]
+        ds_times = [times[i] for i in eff_idxs]
+    else:
+        ds_times = times
+    return ds_times, ds_values
+

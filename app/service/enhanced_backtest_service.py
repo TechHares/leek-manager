@@ -21,6 +21,7 @@ from leek_core.models import TimeFrame, TradeInsType
 from leek_core.utils import get_logger
 from app.db.session import db_connect
 from app.schemas.backtest import EnhancedBacktestCreate
+from app.utils.json_sanitize import sanitize_for_json
 
 logger = get_logger(__name__)
 
@@ -88,18 +89,127 @@ class EnhancedBacktestService:
             last_total = None
             import time as _time
             run_start = _time.time()
-            # 设置进度回调
-            def progress_callback(current: int, total: int, times: List[int]):
+            # 设置进度/结果回调（支持第四参 window_data）
+            def progress_callback(current: int, total: int, times: List[int], window_data: Dict[str, Any] | None = None):
                 progress = current / total if total > 0 else 0.0
-                logger.info(f"窗口进度[{config.id}/{config.name}]: {current} / {total}, "
-                f"初始化: {(times[1] - times[0])/1000}s, 加载数据: {(times[2] - times[1])/1000}s, "
-                f"预处理: {(times[3] - times[2])/1000}s, 回测: {(times[4] - times[3])/1000}s, "
-                f"指标: {(times[5] - times[4])/1000}s, 总时间: {(times[5] - times[0])/1000}s")
-                times_metrics.append(times)
+                if times is not None and isinstance(times, (list, tuple)) and len(times) >= 6:
+                    logger.info(f"窗口进度[{config.id}/{config.name}]: {current} / {total}, "
+                    f"初始化: {(times[1] - times[0])/1000}s, 加载数据: {(times[2] - times[1])/1000}s, "
+                    f"预处理: {(times[3] - times[2])/1000}s, 回测: {(times[4] - times[3])/1000}s, "
+                    f"指标: {(times[5] - times[4])/1000}s, 总时间: {(times[5] - times[0])/1000}s")
+                    times_metrics.append(times)
                 self._update_task_progress(config.id, progress)
                 nonlocal last_total
                 last_total = last_total or total
-            # 创建回测器
+                # 若附带窗口数据，则缓存并可能批量落库
+                if window_data is not None:
+                    try:
+                        result_callback(int(window_data.get("window_idx") or 0), str(window_data.get("symbol") or ""), str(window_data.get("timeframe") or ""), window_data)
+                    except Exception:
+                        logger.error("progress_callback result handling failed", exc_info=True)
+            # 结果缓冲与聚合器
+            windows_buffer: List[Dict[str, Any]] = []
+            total_windows_emitted = 0
+            # 参数推荐聚合（仅 WFA 使用）
+            params_agg: Dict[str, Dict[str, Any]] = {}
+
+            def _canon_key(obj: Dict[str, Any]) -> str:
+                try:
+                    return json.dumps(obj or {}, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+                except Exception:
+                    return str(obj or {})
+
+            def _median(xs: List[float]) -> float:
+                if not xs:
+                    return 0.0
+                arr = sorted([x for x in xs if x is not None and x == x])
+                if not arr:
+                    return 0.0
+                n = len(arr)
+                return arr[n//2] if n % 2 == 1 else (arr[n//2 - 1] + arr[n//2]) / 2.0
+
+            # 批量持久化：每10个窗口批量写入
+            def flush_windows_batch():
+                nonlocal windows_buffer, total_windows_emitted
+                if not windows_buffer:
+                    return
+                with db_connect() as _db:
+                    task = _db.query(BacktestTask).filter(BacktestTask.id == config.id).first()
+                    if not task:
+                        windows_buffer = []
+                        return
+                    existing = list(task.windows or [])
+                    to_append: List[Dict[str, Any]] = []
+                    for w in windows_buffer:
+                        # 压缩时间序列和曲线
+                        compressed_times = encode_time_series(w.get("equity_times") or [])
+                        compressed_equity = encode_values(w.get("equity_values") or [])
+                        compressed_drawdown = encode_values(w.get("drawdown_curve") or []) if w.get("drawdown_curve") else None
+                        compressed_benchmark = encode_values(w.get("benchmark_curve") or []) if w.get("benchmark_curve") else None
+                        payload = {
+                            "window_idx": w.get("window_idx"),
+                            "symbol": w.get("symbol"),
+                            "timeframe": w.get("timeframe"),
+                            # 训练/测试区间如有
+                            "train_period": w.get("train_period"),
+                            "test_period": w.get("test_period"),
+                            # NORMAL 记录 params，WFA 记录 best_params
+                            "params": w.get("params") or {},
+                            "best_params": w.get("best_params") or {},
+                            "test_metrics": (w.get("test_metrics") or w.get("metrics") or {}),
+                            "metrics": (w.get("metrics") or w.get("test_metrics") or {}),
+                            "equity_times": compressed_times,
+                            "equity_values": compressed_equity,
+                            "drawdown_curve": compressed_drawdown,
+                            "benchmark_curve": compressed_benchmark,
+                            "trades": (w.get("trades") or [])[:100],
+                            "execution_time": w.get("execution_time") or 0.0,
+                        }
+                        to_append.append(sanitize_for_json(payload))
+                    existing.extend(to_append)
+                    task.windows = existing
+                    task.windows_count = int((task.windows_count or 0) + len(to_append))
+                    _db.commit()
+                    total_windows_emitted += len(to_append)
+                windows_buffer = []
+
+            def result_callback(window_idx: int, symbol: str, timeframe: str, window_data: Dict[str, Any]):
+                # 缓存窗口数据，满足批量条件再落库
+                windows_buffer.append({
+                    "window_idx": window_idx,
+                    "symbol": symbol,
+                    "timeframe": timeframe,
+                    **(window_data or {}),
+                })
+                # 参数推荐聚合（WFA：使用 best_params 与测试指标）
+                best_params = (window_data or {}).get("best_params")
+                test_metrics = (window_data or {}).get("test_metrics") or (window_data or {}).get("metrics") or {}
+                if best_params is not None:
+                    key = _canon_key(best_params)
+                    bucket = params_agg.setdefault(key, {"params": best_params, "count": 0, "sharpe": [], "mdd": [], "annual": [], "profit_factor": []})
+                    bucket["count"] += 1
+                    try:
+                        bucket["sharpe"].append(float(test_metrics.get("sharpe_ratio") or 0.0))
+                    except Exception:
+                        bucket["sharpe"].append(0.0)
+                    try:
+                        bucket["mdd"].append(float(test_metrics.get("max_drawdown") or 0.0))
+                    except Exception:
+                        bucket["mdd"].append(0.0)
+                    try:
+                        bucket["annual"].append(float(test_metrics.get("annual_return") or 0.0))
+                    except Exception:
+                        bucket["annual"].append(0.0)
+                    try:
+                        bucket["profit_factor"].append(float(test_metrics.get("profit_factor") or 0.0))
+                    except Exception:
+                        bucket["profit_factor"].append(0.0)
+
+                # 每10个 flush 一次
+                if len(windows_buffer) >= 10:
+                    flush_windows_batch()
+
+            # 创建回测器（结果通过 progress_callback 第四参传递）
             backtester = EnhancedBacktester(config, progress_callback)
             
             # 执行回测（在独立线程中运行，避免阻塞事件循环）
@@ -122,8 +232,168 @@ class EnhancedBacktestService:
                 if agg and agg.get("stages"):
                     self._save_times_metrics(config.id, agg)
             
-            # 处理结果
-            await self._process_backtest_result(config.id, result)
+            # 处理结果（流式模式：仅生成 summary 与推荐信息，不重写已落库的 windows）
+            with db_connect() as db:
+                task = db.query(BacktestTask).filter(BacktestTask.id == config.id).first()
+                if task:
+                    # 最后一次 flush 余量
+                    flush_windows_batch()
+                    # 生成 summary
+                    if isinstance(result, WalkForwardResult):
+                        # 参数推荐
+                        rankings: List[Dict[str, Any]] = []
+                        total_windows = int(total_windows_emitted or 0)
+                        for k, v in params_agg.items():
+                            rankings.append({
+                                "params_key": k,
+                                "params": v.get("params") or {},
+                                "count": int(v.get("count") or 0),
+                                "coverage_ratio": (float(v.get("count") or 0) / float(total_windows or 1)),
+                                "median_sharpe": _median(v.get("sharpe") or []),
+                                "median_mdd": _median(v.get("mdd") or []),
+                                "median_annual": _median(v.get("annual") or []),
+                                "median_profit_factor": _median(v.get("profit_factor") or []),
+                            })
+                        rankings.sort(key=lambda r: (
+                            r.get("count", 0),
+                            r.get("median_sharpe", 0.0),
+                            -abs(float(r.get("median_mdd", 0.0) or 0.0))
+                        ), reverse=True)
+                        recommendation: Dict[str, Any] = {}
+                        if rankings:
+                            top = rankings[0]
+                            recommendation = {
+                                "recommended_key": top.get("params_key"),
+                                "recommended_params": top.get("params") or {},
+                                "coverage": int(top.get("count") or 0),
+                                "total_windows": total_windows,
+                                "median_sharpe": top.get("median_sharpe", 0.0),
+                                "median_mdd": top.get("median_mdd", 0.0),
+                                "median_annual": top.get("median_annual", 0.0),
+                                "median_profit_factor": top.get("median_profit_factor", 0.0),
+                                "rankings": rankings[:10],
+                            }
+                        summary_data = {
+                            "walk_forward": {
+                                "total_windows": total_windows,
+                                "aggregated_metrics": result.aggregated_metrics.to_dict(),
+                                "execution_time": result.execution_time,
+                                "windows_by_symbol": self._group_windows_by_symbol(task.windows or []),
+                                "recommendation": recommendation,
+                            }
+                        }
+                        # 写入 summary 与 artifacts
+                        task.summary = sanitize_for_json(summary_data)
+                        artifacts = dict(task.artifacts or {})
+                        wf_artifacts = dict(artifacts.get("walk_forward", {}))
+                        wf_artifacts["recommendation"] = recommendation or {}
+                        artifacts["walk_forward"] = wf_artifacts
+                        task.artifacts = sanitize_for_json(artifacts)
+                        # 更新聚合指标
+                        m = result.aggregated_metrics
+                        task.sharpe_median = m.sharpe_ratio
+                        task.mdd_median = m.max_drawdown
+                        task.trades_median = float(m.total_trades)
+                        task.total_return = m.total_return
+                        task.annual_return = m.annual_return
+                        task.total_trades = m.total_trades
+                        task.profit_factor = m.profit_factor
+                        task.win_loss_ratio = m.win_loss_ratio
+                        task.avg_win = m.avg_win
+                        task.avg_loss = m.avg_loss
+                        task.win_rate = m.win_rate
+                        task.trade_win_rate = m.win_rate
+                    elif isinstance(result, NormalBacktestResult):
+                        # 组合曲线：读取已落库窗口，解压并按等权步进聚合
+                        try:
+                            from app.utils.series_codec import decode_time_series, decode_values
+                            all_windows = list(task.windows or [])
+                            series_list = []
+                            for w in all_windows:
+                                try:
+                                    t = decode_time_series(w.get("equity_times")) if isinstance(w.get("equity_times"), dict) else (w.get("equity_times") or [])
+                                    v = decode_values(w.get("equity_values")) if isinstance(w.get("equity_values"), dict) else (w.get("equity_values") or [])
+                                    if t and v and len(t) == len(v):
+                                        series_list.append((t, v))
+                                except Exception:
+                                    continue
+                            union_times = sorted({tt for (ts, _) in series_list for tt in ts}) if series_list else []
+                            combined_values: List[float] = []
+                            if union_times:
+                                # 初始等权净值
+                                initial_values = [float(vals[0]) for (_, vals) in series_list if vals]
+                                combined_current = (sum(initial_values) / float(len(initial_values))) if initial_values else 1.0
+                                last_equities = [float(vals[0]) if vals else 0.0 for (_, vals) in series_list]
+                                idx_by_series = [0 for _ in series_list]
+                                combined_values.append(combined_current)
+                                for t in union_times[1:]:
+                                    step_returns = []
+                                    for i, (times_i, vals_i) in enumerate(series_list):
+                                        idx = idx_by_series[i]
+                                        while idx + 1 < len(times_i) and times_i[idx + 1] <= t:
+                                            idx += 1
+                                            idx_by_series[i] = idx
+                                            last_equities[i] = float(vals_i[idx])
+                                        if idx >= 1:
+                                            prev_eq = float(vals_i[idx - 1])
+                                            curr_eq = float(vals_i[idx])
+                                            ret = (curr_eq / prev_eq - 1.0) if prev_eq != 0 else 0.0
+                                        else:
+                                            ret = 0.0
+                                        step_returns.append(ret)
+                                    avg_ret = sum(step_returns) / float(len(step_returns)) if step_returns else 0.0
+                                    combined_current = combined_current * (1.0 + avg_ret)
+                                    combined_values.append(combined_current)
+                            combined = {
+                                "equity_times": encode_time_series(union_times) if union_times else None,
+                                "equity_values": encode_values(combined_values) if combined_values else None,
+                            }
+                        except Exception:
+                            combined = {"equity_times": None, "equity_values": None}
+                        summary_data = {
+                            "normal": {
+                                "aggregated_metrics": result.aggregated_metrics.to_dict(),
+                                "combined": combined,
+                                "execution_time": result.execution_time,
+                            }
+                        }
+                        task.summary = sanitize_for_json(summary_data)
+                        # 更新聚合指标（来自 core 汇总）
+                        m = result.aggregated_metrics
+                        task.sharpe_median = m.sharpe_ratio
+                        task.mdd_median = m.max_drawdown
+                        task.trades_median = float(m.total_trades)
+                        task.turnover_median = m.turnover
+                        task.pnl_median = m.total_return
+                        # 关键展示指标：总收益率/年化收益率
+                        task.total_return = m.total_return
+                        task.annual_return = m.annual_return
+                        task.win_rate = m.win_rate
+                        task.trade_win_rate = m.win_rate
+                        task.long_win_rate = m.long_win_rate
+                        task.short_win_rate = m.short_win_rate
+                        # 窗口合计整数字段
+                        task.total_trades = int(m.total_trades or 0)
+                        task.profit_factor = m.profit_factor
+                        task.win_loss_ratio = m.win_loss_ratio
+                        task.avg_win = m.avg_win
+                        task.avg_loss = m.avg_loss
+                        # 盈亏合计与次数（使用聚合估计）
+                        task.profit_sum = m.avg_win * float(m.win_trades or 0)
+                        task.loss_sum = abs(m.avg_loss) * float(m.loss_trades or 0)
+                        task.profit_count = int(m.win_trades or 0)
+                        task.loss_count = int(m.loss_trades or 0)
+                    else:
+                        # 单次回测：已在回调中写入窗口，此处写简要 summary
+                        summary_data = {
+                            "single_result": {
+                                "metrics": result.metrics.to_dict() if hasattr(result, 'metrics') else {},
+                                "execution_time": getattr(result, 'execution_time', 0.0),
+                                "metadata": getattr(result, 'metadata', {}) or {}
+                            }
+                        }
+                        task.summary = sanitize_for_json(summary_data)
+                    db.commit()
             
             # 更新任务状态为完成
             self._update_task_status(config.id, "completed", 1.0, finished_at=datetime.now())
@@ -192,8 +462,9 @@ class EnhancedBacktestService:
         # 更新数据库
         task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
         if task:
-            task.windows = [window_data]
-            task.summary = summary_data
+            # 清洗 JSON 字段，避免 NaN/Inf 进入 DB
+            task.windows = sanitize_for_json([window_data])
+            task.summary = sanitize_for_json(summary_data)
             task.windows_count = 1
             
             # 更新冗余字段
@@ -357,15 +628,15 @@ class EnhancedBacktestService:
         # 更新数据库
         task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
         if task:
-            task.windows = windows_data
-            task.summary = summary_data
+            task.windows = sanitize_for_json(windows_data)
+            task.summary = sanitize_for_json(summary_data)
             task.windows_count = len(windows_data)
             # 写入 artifacts：保存WFA推荐信息，避免污染summary结构
             artifacts = dict(task.artifacts or {})
             wf_artifacts = dict(artifacts.get("walk_forward", {}))
             wf_artifacts["recommendation"] = recommendation or {}
             artifacts["walk_forward"] = wf_artifacts
-            task.artifacts = artifacts
+            task.artifacts = sanitize_for_json(artifacts)
             
             # 更新聚合指标（使用整体聚合后的指标）
             metrics = result.aggregated_metrics
@@ -412,7 +683,7 @@ class EnhancedBacktestService:
                 "trades": br.trades[:100] if isinstance(br.trades, list) else [],
                 "execution_time": br.execution_time,
             }
-            windows_data.append(window_data)
+            windows_data.append(sanitize_for_json(window_data))
 
         # 组合曲线压缩
         combined = {
@@ -430,8 +701,8 @@ class EnhancedBacktestService:
 
         task = db.query(BacktestTask).filter(BacktestTask.id == task_id).first()
         if task:
-            task.windows = windows_data
-            task.summary = summary_data
+            task.windows = sanitize_for_json(windows_data)
+            task.summary = sanitize_for_json(summary_data)
             task.windows_count = len(windows_data)
 
             metrics = result.aggregated_metrics

@@ -20,6 +20,8 @@ class BacktestTaskOut(BaseModel):
     config: Optional[Dict[str, Any]] = None
     # 关键信息（冗余列）
     strategy_class: Optional[str] = None
+    # 模板中的显示名称（用于展示，后端附加）
+    strategy_display_name: Optional[str] = None
     data_config_id: Optional[int] = None
     cost_config_id: Optional[int] = None
     start: Optional[str] = None
@@ -76,6 +78,8 @@ class BacktestTaskBriefOut(BaseModel):
     config: Optional[Dict[str, Any]] = None
     # 关键信息（冗余列）
     strategy_class: Optional[str] = None
+    # 模板中的显示名称（用于展示，后端附加）
+    strategy_display_name: Optional[str] = None
     data_config_id: Optional[int] = None
     cost_config_id: Optional[int] = None
     start: Optional[str] = None

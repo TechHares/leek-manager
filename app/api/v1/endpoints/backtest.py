@@ -16,8 +16,10 @@ from app.schemas.backtest import (
 from app.schemas.common import PageResponse
 from leek_core.utils import get_logger
 from app.core.scheduler import scheduler
-from app.utils.series_codec import maybe_decode_values, maybe_decode_times
+from app.utils.series_codec import maybe_decode_values, maybe_decode_times, downsample_series
 from app.service.enhanced_backtest_service import enhanced_backtest_service
+from app.core.template_manager import leek_template_manager
+from app.utils.json_sanitize import sanitize_for_json
 
 logger = get_logger(__name__)
 
@@ -202,11 +204,29 @@ async def get_backtest_task(
                     obj["equity_values"] = maybe_decode_values(obj.get("equity_values"))
                 if "equity_times" in obj:
                     obj["equity_times"] = maybe_decode_times(obj.get("equity_times"))
-                decoded_windows.append(obj)
+                # JSON 合规清洗
+                decoded_windows.append(sanitize_for_json(obj))
             task.windows = decoded_windows
         except Exception:
             ...
-    # 冗余字段已在任务完成时落库，直接返回
+    # 冗余字段已在任务完成时落库，直接返回（模型会由 Pydantic 导出）。
+    # 但为避免 NaN/Inf 导致 JSONResponse 失败，这里对可疑字段做轻量清洗。
+    try:
+        if isinstance(task.summary, dict):
+            task.summary = sanitize_for_json(task.summary)
+        if isinstance(task.artifacts, dict):
+            task.artifacts = sanitize_for_json(task.artifacts)
+    except Exception:
+        ...
+    # 附加展示名称
+    try:
+        # 需要 project_id 获取模板；从任务所属项目冗余字段读取
+        project_id = task.project_id
+        templates = await leek_template_manager.get_strategy_by_project(project_id)
+        cls_to_name = {t.cls: t.name for t in templates}
+        setattr(task, "strategy_display_name", cls_to_name.get(getattr(task, "strategy_class", None)))
+    except Exception:
+        ...
     return task
 
 
@@ -235,18 +255,14 @@ async def list_backtest_tasks(
     elif status:
         query = query.filter(BacktestTask.status == status)
     # 时间范围过滤（按创建时间）
-    try:
-        if start_date:
-            start_dt = datetime.fromisoformat(start_date)
-            query = query.filter(BacktestTask.created_at >= start_dt)
-        if end_date:
-            # 包含当天：将结束时间设置为当天 23:59:59
-            end_dt = datetime.fromisoformat(end_date)
-            end_dt = end_dt.replace(hour=23, minute=59, second=59)
-            query = query.filter(BacktestTask.created_at <= end_dt)
-    except Exception:
-        # 忽略非法时间格式
-        pass
+    if start_date:
+        start_dt = datetime.fromisoformat(start_date)
+        query = query.filter(BacktestTask.created_at >= start_dt)
+    if end_date:
+        # 包含当天：将结束时间设置为当天 23:59:59
+        end_dt = datetime.fromisoformat(end_date)
+        end_dt = end_dt.replace(hour=23, minute=59, second=59)
+        query = query.filter(BacktestTask.created_at <= end_dt)
 
     total = query.count()
     items = (
@@ -255,7 +271,11 @@ async def list_backtest_tasks(
         .limit(size)
         .all()
     )
-    
+    # 附加展示名称
+    templates = await leek_template_manager.get_strategy_by_project(project_id)
+    cls_to_name = {t.cls: t.name for t in templates}
+    for it in items:
+        setattr(it, "strategy_display_name", cls_to_name.get(getattr(it, "strategy_class", None)))
     return PageResponse(total=total, page=page, size=size, items=items)
 
 
@@ -354,6 +374,42 @@ async def get_enhanced_backtest_results(
     
     # 获取完整的性能指标
     windows = task_with_data.windows if task_with_data else task.windows
+    
+    # 下采样：当单条曲线长度过长时，降低采样率（阈值 2100）
+    try:
+        DS_MAX = 2100
+        ds_windows = []
+        if isinstance(windows, list):
+            for w in windows:
+                if not isinstance(w, dict):
+                    ds_windows.append(w)
+                    continue
+                obj = dict(w)
+                times = obj.get("equity_times")
+                values = obj.get("equity_values")
+                if isinstance(values, list) and len(values) > DS_MAX:
+                    n = len(values)
+                    # 统一索引，保证多条曲线对齐
+                    stride = (n + DS_MAX - 1) // DS_MAX
+                    idxs = list(range(0, n, stride))
+                    if idxs[-1] != n - 1:
+                        idxs.append(n - 1)
+                    # 应用到 equity
+                    obj["equity_values"] = [values[i] for i in idxs]
+                    if isinstance(times, list) and len(times) >= n:
+                        obj["equity_times"] = [times[i] for i in idxs]
+                    # 对齐回撤与基准
+                    dd = obj.get("drawdown_curve")
+                    if isinstance(dd, list) and len(dd) >= n:
+                        obj["drawdown_curve"] = [dd[i] for i in idxs]
+                    bm = obj.get("benchmark_curve")
+                    if isinstance(bm, list) and len(bm) >= n:
+                        obj["benchmark_curve"] = [bm[i] for i in idxs]
+                ds_windows.append(obj)
+            windows = ds_windows
+    except Exception:
+        # 下采样失败时，保持原样
+        ...
     detailed_metrics = {}
     combined = None
     # normal 模式：使用汇总指标，并解压组合曲线
@@ -370,6 +426,9 @@ async def get_enhanced_backtest_results(
                     times = maybe_decode_times(times)
                 if values:
                     values = maybe_decode_values(values)
+                # 对组合曲线做下采样
+                if isinstance(values, list) and len(values) > DS_MAX:
+                    times, values = downsample_series(times, values, DS_MAX)
                 combined = { 'equity_times': times, 'equity_values': values }
         except Exception:
             combined = None
@@ -398,6 +457,7 @@ async def get_enhanced_backtest_results(
         "execution_time": (task.finished_at - task.started_at).total_seconds() if task.finished_at and task.started_at else None
     }
     
-    return results
+    # 确保 JSON 合规
+    return sanitize_for_json(results)
 
 
