@@ -203,6 +203,9 @@ class EnhancedBacktestCreate(BaseModel):
     cv_splits: int = Field(0, description="交叉验证分割数")
     # Walk-Forward 窗口模式：rolling | expanding
     wf_window_mode: str = Field("rolling", description="WF窗口模式：rolling/expanding")
+    # Optuna（可选）
+    optuna_enabled: Optional[bool] = Field(False, description="是否启用 Optuna 优化")
+    optuna_n_trials: Optional[int] = Field(80, description="Optuna 试验次数")
     
     # 并行配置
     max_workers: int = Field(1, description="最大并行数")

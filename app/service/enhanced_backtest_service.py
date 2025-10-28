@@ -75,6 +75,8 @@ class EnhancedBacktestService:
             mount_dirs=mount_dirs,
             use_cache=(req.use_cache if getattr(req, 'use_cache', None) is not None else bool(getattr(req, 'use_shared_memory_cache', False))),
             log_file=bool(getattr(req, 'log_file', False)),
+            optuna_enabled=bool(getattr(req, 'optuna_enabled', False)),
+            optuna_n_trials=int(getattr(req, 'optuna_n_trials', 80) or 80),
         )
         # 异步执行回测
         asyncio.create_task(self._execute_backtest_async(backtest_config))
