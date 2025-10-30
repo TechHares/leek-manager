@@ -375,41 +375,7 @@ async def get_enhanced_backtest_results(
     # 获取完整的性能指标
     windows = task_with_data.windows if task_with_data else task.windows
     
-    # 下采样：当单条曲线长度过长时，降低采样率（阈值 2100）
-    try:
-        DS_MAX = 2100
-        ds_windows = []
-        if isinstance(windows, list):
-            for w in windows:
-                if not isinstance(w, dict):
-                    ds_windows.append(w)
-                    continue
-                obj = dict(w)
-                times = obj.get("equity_times")
-                values = obj.get("equity_values")
-                if isinstance(values, list) and len(values) > DS_MAX:
-                    n = len(values)
-                    # 统一索引，保证多条曲线对齐
-                    stride = (n + DS_MAX - 1) // DS_MAX
-                    idxs = list(range(0, n, stride))
-                    if idxs[-1] != n - 1:
-                        idxs.append(n - 1)
-                    # 应用到 equity
-                    obj["equity_values"] = [values[i] for i in idxs]
-                    if isinstance(times, list) and len(times) >= n:
-                        obj["equity_times"] = [times[i] for i in idxs]
-                    # 对齐回撤与基准
-                    dd = obj.get("drawdown_curve")
-                    if isinstance(dd, list) and len(dd) >= n:
-                        obj["drawdown_curve"] = [dd[i] for i in idxs]
-                    bm = obj.get("benchmark_curve")
-                    if isinstance(bm, list) and len(bm) >= n:
-                        obj["benchmark_curve"] = [bm[i] for i in idxs]
-                ds_windows.append(obj)
-            windows = ds_windows
-    except Exception:
-        # 下采样失败时，保持原样
-        ...
+    # 数据已在存储时下采样，无需再次下采样
     detailed_metrics = {}
     combined = None
     # normal 模式：使用汇总指标，并解压组合曲线
@@ -426,9 +392,7 @@ async def get_enhanced_backtest_results(
                     times = maybe_decode_times(times)
                 if values:
                     values = maybe_decode_values(values)
-                # 对组合曲线做下采样
-                if isinstance(values, list) and len(values) > DS_MAX:
-                    times, values = downsample_series(times, values, DS_MAX)
+                # 组合曲线已在下采样后存储，无需再次下采样
                 combined = { 'equity_times': times, 'equity_values': values }
         except Exception:
             combined = None

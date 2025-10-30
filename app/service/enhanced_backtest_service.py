@@ -142,12 +142,37 @@ class EnhancedBacktestService:
                         return
                     existing = list(task.windows or [])
                     to_append: List[Dict[str, Any]] = []
+                    # 下采样配置
+                    DOWNSAMPLE_MAX_POINTS = 1500
+                    
                     for w in windows_buffer:
+                        # 存储前下采样（在压缩之前）
+                        from app.utils.series_codec import downsample_series
+                        
+                        equity_times = w.get("equity_times") or []
+                        equity_values = w.get("equity_values") or []
+                        drawdown_curve = w.get("drawdown_curve") or []
+                        benchmark_curve = w.get("benchmark_curve") or []
+                        
+                        # 下采样净值曲线
+                        if equity_values and len(equity_values) > DOWNSAMPLE_MAX_POINTS:
+                            equity_times, equity_values = downsample_series(equity_times, equity_values, DOWNSAMPLE_MAX_POINTS)
+                        
+                        # 下采样回撤曲线
+                        if drawdown_curve and len(drawdown_curve) > DOWNSAMPLE_MAX_POINTS:
+                            _, drawdown_curve = downsample_series(None, drawdown_curve, DOWNSAMPLE_MAX_POINTS)
+                        
+                        # 下采样基准曲线
+                        if benchmark_curve and len(benchmark_curve) > DOWNSAMPLE_MAX_POINTS:
+                            _, benchmark_curve = downsample_series(None, benchmark_curve, DOWNSAMPLE_MAX_POINTS)
+                        
                         # 压缩时间序列和曲线
-                        compressed_times = encode_time_series(w.get("equity_times") or [])
-                        compressed_equity = encode_values(w.get("equity_values") or [])
-                        compressed_drawdown = encode_values(w.get("drawdown_curve") or []) if w.get("drawdown_curve") else None
-                        compressed_benchmark = encode_values(w.get("benchmark_curve") or []) if w.get("benchmark_curve") else None
+                        compressed_times = encode_time_series(equity_times)
+                        compressed_equity = encode_values(equity_values)
+                        compressed_drawdown = encode_values(drawdown_curve) if drawdown_curve else None
+                        compressed_benchmark = encode_values(benchmark_curve) if benchmark_curve else None
+                        
+                        # 精简数据：只保留必要的字段
                         payload = {
                             "window_idx": w.get("window_idx"),
                             "symbol": w.get("symbol"),
@@ -158,14 +183,13 @@ class EnhancedBacktestService:
                             # NORMAL 记录 params，WFA 记录 best_params
                             "params": w.get("params") or {},
                             "best_params": w.get("best_params") or {},
+                            # 合并metrics字段，只保留一个
                             "test_metrics": (w.get("test_metrics") or w.get("metrics") or {}),
-                            "metrics": (w.get("metrics") or w.get("test_metrics") or {}),
                             "equity_times": compressed_times,
                             "equity_values": compressed_equity,
                             "drawdown_curve": compressed_drawdown,
                             "benchmark_curve": compressed_benchmark,
-                            "trades": (w.get("trades") or [])[:100],
-                            "execution_time": w.get("execution_time") or 0.0,
+                            # 移除trades和execution_time字段
                         }
                         to_append.append(sanitize_for_json(payload))
                     existing.extend(to_append)
@@ -346,6 +370,11 @@ class EnhancedBacktestService:
                                     avg_ret = sum(step_returns) / float(len(step_returns)) if step_returns else 0.0
                                     combined_current = combined_current * (1.0 + avg_ret)
                                     combined_values.append(combined_current)
+                            # 下采样组合曲线
+                            DOWNSAMPLE_MAX_POINTS = 1500
+                            if combined_values and len(combined_values) > DOWNSAMPLE_MAX_POINTS:
+                                from app.utils.series_codec import downsample_series
+                                union_times, combined_values = downsample_series(union_times, combined_values, DOWNSAMPLE_MAX_POINTS)
                             combined = {
                                 "equity_times": encode_time_series(union_times) if union_times else None,
                                 "equity_values": encode_values(combined_values) if combined_values else None,

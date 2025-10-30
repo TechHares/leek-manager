@@ -9,16 +9,17 @@ Series codec utilities for compact storage of large time/value arrays.
   * n:  int, number of points
   * dt: int, step in the same unit as t0 (e.g., milliseconds)
 
-- Values: encode float series using float32 and optional delta + zlib compression
-  * format: {"codec": "zlib-f32-delta", "data": base64_str}
+- Values: encode float series using float32 delta + lz4 compression
+  * format: {"codec": "lz4-f32-delta", "data": base64_str}
+  * Uses lz4 for fast decompression (much faster than zlib)
 """
 
 from __future__ import annotations
 
 from typing import List, Dict, Any
 import base64
-import zlib
 import struct
+import lz4.frame
 
 
 def encode_time_series(times: List[int]) -> Dict[str, int]:
@@ -57,13 +58,15 @@ def _unpack_f32(buf: bytes, offset: int) -> float:
 
 
 def encode_values(values: List[float]) -> Dict[str, Any]:
-    """Encode float values using float32 delta + zlib compression.
+    """Encode float values using float32 delta + lz4 compression.
 
     Layout before compression: [v0_f32][d1_f32][d2_f32]...[d{n-1}_f32]
     where di = v{i} - v{i-1}.
+    
+    Uses lz4 for fast decompression (much faster than zlib).
     """
     if not values:
-        return {"codec": "zlib-f32-delta", "data": ""}
+        return {"codec": "lz4-f32-delta", "data": ""}
     n = len(values)
     # Build bytes buffer
     chunks = []
@@ -75,9 +78,13 @@ def encode_values(values: List[float]) -> Dict[str, Any]:
         chunks.append(_pack_f32(diff))
         prev = cur
     raw = b"".join(chunks)
-    compressed = zlib.compress(raw)
+    
+    # Use lz4 for fast decompression
+    # COMPRESSIONLEVEL_MINHC: High compression mode (better compression ratio)
+    compressed = lz4.frame.compress(raw, compression_level=lz4.frame.COMPRESSIONLEVEL_MINHC)
+    
     b64 = base64.b64encode(compressed).decode("ascii")
-    return {"codec": "zlib-f32-delta", "data": b64}
+    return {"codec": "lz4-f32-delta", "data": b64}
 
 
 def decode_values(encoded: Dict[str, Any]) -> List[float]:
@@ -85,10 +92,10 @@ def decode_values(encoded: Dict[str, Any]) -> List[float]:
     data = encoded.get("data")
     if not data:
         return []
-    if codec != "zlib-f32-delta":
-        raise ValueError(f"Unsupported codec: {codec}")
+    if codec != "lz4-f32-delta":
+        raise ValueError(f"Unsupported codec: {codec}. Expected 'lz4-f32-delta'")
     compressed = base64.b64decode(data)
-    raw = zlib.decompress(compressed)
+    raw = lz4.frame.decompress(compressed)
     # First float is v0, rest are deltas
     if len(raw) < 4:
         return []

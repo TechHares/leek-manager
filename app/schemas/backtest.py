@@ -293,6 +293,18 @@ class PerformanceMetricsOut(BaseModel):
     worst_month: float = 0.0
     positive_months: int = 0
     negative_months: int = 0
+    
+    # 统计检验结果
+    t_statistic: float = 0.0
+    t_pvalue: float = 1.0
+    paired_t_statistic: float = 0.0
+    paired_t_pvalue: float = 1.0
+    bootstrap_sharpe_ci_lower: float = 0.0
+    bootstrap_sharpe_ci_upper: float = 0.0
+    bootstrap_annual_return_ci_lower: float = 0.0
+    bootstrap_annual_return_ci_upper: float = 0.0
+    win_rate_pvalue: float = 1.0
+    alpha_pvalue: float = 1.0
 
 
 class BacktestResultOut(BaseModel):
