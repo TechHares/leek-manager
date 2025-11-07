@@ -112,6 +112,7 @@ class EnhancedBacktestService:
             # 结果缓冲与聚合器
             windows_buffer: List[Dict[str, Any]] = []
             total_windows_emitted = 0
+            zero_trade_windows_count = 0  # 统计0交易窗口数量
             # 参数推荐聚合（仅 WFA 使用）
             params_agg: Dict[str, Dict[str, Any]] = {}
 
@@ -132,7 +133,7 @@ class EnhancedBacktestService:
 
             # 批量持久化：每10个窗口批量写入
             def flush_windows_batch():
-                nonlocal windows_buffer, total_windows_emitted
+                nonlocal windows_buffer, total_windows_emitted, zero_trade_windows_count
                 if not windows_buffer:
                     return
                 with db_connect() as _db:
@@ -146,6 +147,14 @@ class EnhancedBacktestService:
                     DOWNSAMPLE_MAX_POINTS = 1500
                     
                     for w in windows_buffer:
+                        # 检查是否为0交易窗口
+                        test_metrics = w.get("test_metrics") or w.get("metrics") or {}
+                        total_trades = int(test_metrics.get("total_trades") or 0)
+                        if total_trades == 0:
+                            # 跳过0交易窗口，只统计数量
+                            zero_trade_windows_count += 1
+                            continue
+                        
                         # 存储前下采样（在压缩之前）
                         from app.utils.series_codec import downsample_series
                         
@@ -184,7 +193,7 @@ class EnhancedBacktestService:
                             "params": w.get("params") or {},
                             "best_params": w.get("best_params") or {},
                             # 合并metrics字段，只保留一个
-                            "test_metrics": (w.get("test_metrics") or w.get("metrics") or {}),
+                            "test_metrics": test_metrics,
                             "equity_times": compressed_times,
                             "equity_values": compressed_equity,
                             "drawdown_curve": compressed_drawdown,
@@ -302,6 +311,7 @@ class EnhancedBacktestService:
                         summary_data = {
                             "walk_forward": {
                                 "total_windows": total_windows,
+                                "zero_trade_windows_count": zero_trade_windows_count,
                                 "aggregated_metrics": result.aggregated_metrics.to_dict(),
                                 "execution_time": result.execution_time,
                                 "windows_by_symbol": self._group_windows_by_symbol(task.windows or []),
@@ -383,6 +393,7 @@ class EnhancedBacktestService:
                             combined = {"equity_times": None, "equity_values": None}
                         summary_data = {
                             "normal": {
+                                "zero_trade_windows_count": zero_trade_windows_count,
                                 "aggregated_metrics": result.aggregated_metrics.to_dict(),
                                 "combined": combined,
                                 "execution_time": result.execution_time,
