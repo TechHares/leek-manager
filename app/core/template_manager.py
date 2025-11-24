@@ -17,13 +17,68 @@ from leek_core.risk import *
 from app.db.session import db_connect
 from app.models.project_config import ProjectConfig
 import sys
+import asyncio
 from asyncio import Lock
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler, FileSystemEvent
+import threading
+import time
 
 BASE_DIR = Path(__file__).parent.parent.parent.parent
 
 logger = get_logger(__name__)
 
 T = TypeVar('T')
+
+
+class TemplateFileEventHandler(FileSystemEventHandler):
+    """
+    模板文件变化事件处理器
+    使用防抖机制避免频繁刷新
+    """
+    def __init__(self, directory_path: str, debounce_time: float = 5):
+        super().__init__()
+        self.managers: List[TemplateManager] = []
+        self.directory_path = directory_path
+        self.debounce_time = debounce_time
+        self.last_event_time: float = 0
+        self._lock = threading.Lock()
+    
+    def on_modified(self, event: FileSystemEvent):
+        self._process_event(event)
+    
+    def on_created(self, event: FileSystemEvent):
+        self._process_event(event)
+    
+    def on_deleted(self, event: FileSystemEvent):
+        self._process_event(event)
+    
+    def on_moved(self, event: FileSystemEvent):
+        self._process_event(event)
+                
+
+    def _process_event(self,  event: FileSystemEvent):
+        """
+        处理该事件
+        """
+        if event.is_directory:
+            return
+        if not event.src_path.endswith('.py'):
+            return
+        if os.path.basename(event.src_path).startswith('_'):
+            return
+        if '__pycache__' in event.src_path:
+            return
+        
+        current_time = time.time()
+        with self._lock:
+            if current_time - self.last_event_time < self.debounce_time:
+                return
+            self.last_event_time = current_time
+            for manager in self.managers:
+                manager._load_templates_from_directory(self.directory_path)
+            
+
 
 class TemplateManager:
     def __init__(self, allowed_types: Set[Type] = None):
@@ -83,11 +138,11 @@ class TemplateManager:
         if directory_path not in sys.path:
                 sys.path.append(directory_path)
         for root, dirs, files in os.walk(directory_path):
-            # 排除 __pycache__ 目录
-            dirs[:] = [d for d in dirs if d != '__pycache__']
+            # 排除 __pycache__ 目录和隐藏文件夹（如 .git, .idea, .vscode 等）
+            dirs[:] = [d for d in dirs if d != '__pycache__' and not d.startswith('.') and not d.startswith('test_') and not d.startswith('tests_')]
             logger.info(f"scan_directory: {root}")
             for file in files:
-                if file.endswith('.py') and not file.startswith('_') and not file.startswith('.'):
+                if file.endswith('.py') and not file.startswith('_') and not file.startswith('.') and not file.startswith('test_'):
                     rel_path = os.path.relpath(root, directory_path)
                     module_path = os.path.join(rel_path, file[:-3]).replace(os.sep, '.')
                     if rel_path == '.':
@@ -212,6 +267,9 @@ class LeekTemplateManager(Generic[T]):
         self.project_managers: Dict[int, TemplateManager] = {}  # project_id -> TemplateManager
         self._lock = Lock()
 
+        self.observers: Dict[str, Observer] = {}
+        self.event_handlers: Dict[str, TemplateFileEventHandler] = {}
+
     async def get_manager(self, project_id: int, force_load: bool = True) -> TemplateManager:
         """
         获取项目的模板管理器，如果不存在则创建
@@ -306,13 +364,44 @@ class LeekTemplateManager(Generic[T]):
         """
         new_dirs = set(directories)
         # 删除不再需要的目录
-        for dir_to_remove in manager.get_directories():
+        for dir_to_remove in manager.get_directories() - new_dirs:
             manager.remove_directory(dir_to_remove)
-
-        # 添加新的目录
-        for dir_to_add in new_dirs:
-            manager.add_directory(dir_to_add)
+            if dir_to_remove in self.event_handlers:
+                self.event_handlers[dir_to_remove].managers.remove(manager)
+                if len(self.event_handlers[dir_to_remove].managers) == 0:
+                    # 如果没有其他 manager 使用这个目录，删除 event_handler 和对应的 observer
+                    del self.event_handlers[dir_to_remove]
+                    if dir_to_remove in self.observers:
+                        self.observers[dir_to_remove].stop()
+                        del self.observers[dir_to_remove]
         
+        # 添加新的目录
+        for dir_to_add in new_dirs - manager.get_directories():
+            manager.add_directory(dir_to_add)
+            if dir_to_add not in self.event_handlers:
+                self.event_handlers[dir_to_add] = TemplateFileEventHandler(dir_to_add)
+            if dir_to_add not in self.observers:
+                self.observers[dir_to_add] = Observer()
+                self.observers[dir_to_add].schedule(self.event_handlers[dir_to_add], dir_to_add, recursive=True)
+                self.observers[dir_to_add].start()
+            if manager not in self.event_handlers[dir_to_add].managers:
+                self.event_handlers[dir_to_add].managers.append(manager)
+        
+    async def start_watching(self):
+        """
+        启动模板文件监控
+        """
+        ...
+    
+    async def stop_watching(self):
+        """
+        停止模板文件监控
+        """
+        for observer in self.observers.values():
+            observer.stop()
+        self.observers.clear()
+        self.event_handlers.clear()
+
     async def update_dirs(self, project_id: int, directories: List[str]):
         """
         更新项目的模板目录列表

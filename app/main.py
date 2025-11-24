@@ -10,6 +10,7 @@ import sys
 from app.core.engine import engine_manager, start_engine_manager
 from app.core.scheduler import scheduler
 from app.core.config_manager import config_manager
+from app.core.template_manager import leek_template_manager
 import asyncio
 from contextlib import asynccontextmanager
 import os
@@ -27,10 +28,14 @@ async def lifespan(app: FastAPI):
     engine_task = asyncio.create_task(start_engine_manager())
     # 启动调度器
     scheduler.start()
+    # 启动模板文件监控
+    await leek_template_manager.start_watching()
     logger.info("lifespan: 启动完成，进入yield")
     yield
     logger.info("lifespan: 收到关闭信号，开始清理")
     # 关闭时
+    # 停止模板文件监控
+    await leek_template_manager.stop_watching()
     engine_task.cancel()
     try:
         await engine_task
