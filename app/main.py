@@ -5,6 +5,8 @@ from fastapi.responses import FileResponse
 from app.api.v1.endpoints import config, auth, users, rbac, projects, executors, datasources, position, strategies, signal, order, dashboard, transaction, performance
 from app.api.v1.endpoints import risk as risk_endpoints
 from app.api.v1.endpoints import backtest as backtest_endpoints
+from app.api.v1.endpoints import factors
+from app.api.v1.endpoints import factor_evaluation
 from app.middlewares.system_permission import system_permission_middleware
 import sys
 from app.core.engine import engine_manager, start_engine_manager
@@ -98,6 +100,8 @@ app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
 app.include_router(performance.router, prefix="/api/v1", tags=["performance"])
 app.include_router(backtest_endpoints.router, prefix="/api/v1", tags=["backtest"])
 app.include_router(risk_endpoints.router, prefix="/api/v1", tags=["risk"])
+app.include_router(factors.router, prefix="/api/v1", tags=["factors"])
+app.include_router(factor_evaluation.router, prefix="/api/v1", tags=["factor_evaluation"])
 
 @app.get("/api/health")
 async def health_check():

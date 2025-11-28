@@ -239,7 +239,8 @@ class TemplateManager:
         if self.default_templates is None:
             self.default_templates = []
             for m in ["leek_core.data", "leek_core.executor", "leek_core.strategy", "leek_core.policy",
-                     "leek_core.sub_strategy", "leek_core.risk", "leek_core.alarm", "leek_core.info_fabricator"]:
+                     "leek_core.sub_strategy", "leek_core.risk", "leek_core.alarm", "leek_core.info_fabricator",
+                     "leek_core.ml"]:
                 cls = self.scan_module(m)
                 self.default_templates += cls
 
@@ -357,6 +358,17 @@ class LeekTemplateManager(Generic[T]):
         """
         from leek_core.sub_strategy import SubStrategy
         return await self.get_templates_by_project(project_id, SubStrategy)
+    
+    async def get_factor_by_project(self, project_id: int) -> List[TemplateResponse]:
+        """
+        获取指定项目的因子模板列表
+        参数:
+            project_id: 项目ID
+        返回:
+            List[TemplateResponse]: 因子模板列表，包含模板的基本信息、配置模式等
+        """
+        from leek_core.ml.factors.base import DualModeFactor
+        return await self.get_templates_by_project(project_id, DualModeFactor, exclude_types={DualModeFactor})
 
     async def update_manager_dirs(self, manager: TemplateManager, directories: List[str]):
         """
