@@ -11,6 +11,7 @@ class FieldType(str, Enum):
     RADIO = "radio"
     SELECT = "select"
     ARRAY = "array"
+    MODEL = "model"
 
 class ChoiceType(str, Enum):
     STR = "str"

@@ -54,6 +54,12 @@ class ConfigManager:
     def _ensure_config_dir(self):
         """确保配置目录存在"""
         self.config_dir.mkdir(parents=True, exist_ok=True)
+        # 确保models目录存在
+        self.get_models_dir().mkdir(parents=True, exist_ok=True)
+    
+    def get_models_dir(self) -> Path:
+        """获取模型文件存储目录"""
+        return self.config_dir / 'models'
 
     def _load_config(self):
         """加载配置文件"""

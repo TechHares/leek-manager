@@ -112,7 +112,7 @@ async def list_backtest_configs(
     db: Session = Depends(deps.get_db_session),
     project_id: int = Depends(deps.get_project_id),
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=200),
+    size: int = Query(20, ge=1, le=2000),
     type: Optional[str] = Query(None),
     name: Optional[str] = Query(None),
 ):

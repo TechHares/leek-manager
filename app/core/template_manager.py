@@ -369,6 +369,28 @@ class LeekTemplateManager(Generic[T]):
         """
         from leek_core.ml.factors.base import DualModeFactor
         return await self.get_templates_by_project(project_id, DualModeFactor, exclude_types={DualModeFactor})
+    
+    async def get_label_generator_by_project(self, project_id: int) -> List[TemplateResponse]:
+        """
+        获取指定项目的标签生成器模板列表
+        参数:
+            project_id: 项目ID
+        返回:
+            List[TemplateResponse]: 标签生成器模板列表，包含模板的基本信息、配置模式等
+        """
+        from leek_core.ml.label.base import LabelGenerator
+        return await self.get_templates_by_project(project_id, LabelGenerator, exclude_types={LabelGenerator})
+    
+    async def get_trainer_by_project(self, project_id: int) -> List[TemplateResponse]:
+        """
+        获取指定项目的训练器模板列表
+        参数:
+            project_id: 项目ID
+        返回:
+            List[TemplateResponse]: 训练器模板列表，包含模板的基本信息、配置模式等
+        """
+        from leek_core.ml.trainer.base import BaseTrainer
+        return await self.get_templates_by_project(project_id, BaseTrainer, exclude_types={BaseTrainer})
 
     async def update_manager_dirs(self, manager: TemplateManager, directories: List[str]):
         """
@@ -459,6 +481,7 @@ class LeekTemplateManager(Generic[T]):
             'datetime': FieldType.DATETIME,
             'radio': FieldType.RADIO,
             'select': FieldType.SELECT,
+            'model': FieldType.MODEL,
             'array': FieldType.ARRAY
         }
         return type_mapping.get(field_type.lower(), FieldType.STRING)

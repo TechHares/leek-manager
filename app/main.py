@@ -7,6 +7,7 @@ from app.api.v1.endpoints import risk as risk_endpoints
 from app.api.v1.endpoints import backtest as backtest_endpoints
 from app.api.v1.endpoints import factors
 from app.api.v1.endpoints import factor_evaluation
+from app.api.v1.endpoints import label_generators, trainers, models, model_training
 from app.middlewares.system_permission import system_permission_middleware
 import sys
 from app.core.engine import engine_manager, start_engine_manager
@@ -102,6 +103,10 @@ app.include_router(backtest_endpoints.router, prefix="/api/v1", tags=["backtest"
 app.include_router(risk_endpoints.router, prefix="/api/v1", tags=["risk"])
 app.include_router(factors.router, prefix="/api/v1", tags=["factors"])
 app.include_router(factor_evaluation.router, prefix="/api/v1", tags=["factor_evaluation"])
+app.include_router(label_generators.router, prefix="/api/v1", tags=["label_generators"])
+app.include_router(trainers.router, prefix="/api/v1", tags=["trainers"])
+app.include_router(models.router, prefix="/api/v1", tags=["models"])
+app.include_router(model_training.router, prefix="/api/v1", tags=["model_training"])
 
 @app.get("/api/health")
 async def health_check():

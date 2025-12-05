@@ -3,12 +3,16 @@ from sqlalchemy.orm import Session
 from typing import Any, Dict, List
 from app.api import deps
 from app.models.strategy import Strategy as StrategyModel
+from app.models.model import Model as ModelModel
 from app.schemas.strategy import (
     StrategyConfigOut, StrategyConfigCreate, StrategyConfigUpdate
 )
 from app.schemas.template import TemplateResponse
 from app.core.template_manager import leek_template_manager
 from app.core.engine import engine_manager
+from leek_core.utils import get_logger
+
+logger = get_logger(__name__)
 router = APIRouter()
 @router.get("/strategies", response_model=List[StrategyConfigOut])
 async def list_strategies(
@@ -43,6 +47,42 @@ async def list_strategy_instances(
         })
     return result
 
+def _validate_model_config(params: Dict[str, Any], db: Session) -> Dict[str, Any]:
+    """验证 model_config，如果缺少 model_path 则补充（兼容旧数据）"""
+    if not params or not isinstance(params, dict):
+        return params
+    
+    model_config = params.get('model_config')
+    if not model_config or not isinstance(model_config, dict):
+        return params
+    
+    # 如果已经有 model_path，验证其有效性
+    if 'model_path' in model_config and model_config['model_path']:
+        # 验证文件是否存在（可选，如果文件不存在会在运行时报错）
+        return params
+    
+    # 如果缺少 model_path，尝试从 model_id 补充（兼容旧数据或手动创建的情况）
+    model_id = model_config.get('model_id')
+    if model_id:
+        model = db.query(ModelModel).filter(
+            ModelModel.id == model_id,
+            ModelModel.is_deleted == False
+        ).first()
+        if model:
+            params['model_config']['model_path'] = model.file_path
+            # 如果缺少 feature_config，从模型记录中补充
+            if 'feature_config' not in params['model_config'] or not params['model_config']['feature_config']:
+                if model.feature_config:
+                    params['model_config']['feature_config'] = model.feature_config
+                    logger.info(f"Model config missing feature_config, supplemented from model_id {model_id}")
+            logger.warning(f"Model config missing model_path, supplemented from model_id {model_id}")
+        else:
+            raise HTTPException(status_code=404, detail=f"Model with id {model_id} not found")
+    else:
+        raise HTTPException(status_code=400, detail="model_config must contain either model_path or model_id")
+    
+    return params
+
 @router.post("/strategies", response_model=StrategyConfigOut)
 async def create_strategy(
     strategy: StrategyConfigCreate,
@@ -52,7 +92,13 @@ async def create_strategy(
     data = strategy.model_dump()
     # 进出场子策略已移除
     data["info_fabricator_configs"] = data.pop("info_fabricator_configs", None)
-    data["params"] = data.pop("params", None)
+    params = data.pop("params", None)
+    
+    # 验证并补充 model_path（如果缺失）
+    if params:
+        params = _validate_model_config(params, db)
+    
+    data["params"] = params
     data["project_id"] = project_id
     strategy_model = StrategyModel(**data)
     db.add(strategy_model)
@@ -85,6 +131,11 @@ async def update_strategy(
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
     update_data = strategy_in.model_dump(exclude_unset=True)
+    
+    # 如果更新了 params，验证并补充 model_path（如果缺失）
+    if 'params' in update_data and update_data['params']:
+        update_data['params'] = _validate_model_config(update_data['params'], db)
+    
     # 进出场子策略已移除
     for field, value in update_data.items():
         setattr(strategy, field, value)
