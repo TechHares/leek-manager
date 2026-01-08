@@ -414,7 +414,7 @@ class LeekTemplateManager(Generic[T]):
             manager.add_directory(dir_to_add)
             if dir_to_add not in self.event_handlers:
                 self.event_handlers[dir_to_add] = TemplateFileEventHandler(dir_to_add)
-            if dir_to_add not in self.observers:
+            if dir_to_add not in self.observers and "default" != dir_to_add:
                 self.observers[dir_to_add] = Observer()
                 self.observers[dir_to_add].schedule(self.event_handlers[dir_to_add], dir_to_add, recursive=True)
                 self.observers[dir_to_add].start()
