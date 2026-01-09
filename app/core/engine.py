@@ -468,29 +468,26 @@ class EngineManager:
                 
                 await client.start()
                 self.clients[instance_id] = client
-                
-                # 等待子进程启动
-                await asyncio.sleep(2)
-                
-                # 同步仓位风控策略（全局）—在启用执行器之前
-                risk_policies = db.query(RiskPolicy).filter_by(project_id=int(instance_id), is_enabled=True).all()
-                for rp in risk_policies:
-                    await self.send_action(instance_id, "add_position_policy", config=rp.dumps_map())
+                with db_connect() as db:
+                    # 同步仓位风控策略（全局）—在启用执行器之前
+                    risk_policies = db.query(RiskPolicy).filter_by(project_id=int(instance_id), is_enabled=True).all()
+                    for rp in risk_policies:
+                        await self.send_action(instance_id, "add_position_policy", config=rp.dumps_map())
 
-                # 启用执行器
-                executors = db.query(Executor).filter_by(project_id=int(instance_id), is_enabled=True).all()
-                for ex in executors:
-                    await self.send_action(instance_id, "add_executor", config=ex.dumps_map())
+                    # 启用执行器
+                    executors = db.query(Executor).filter_by(project_id=int(instance_id), is_enabled=True).all()
+                    for ex in executors:
+                        await self.send_action(instance_id, "add_executor", config=ex.dumps_map())
 
-                # 启用数据源
-                datasources = db.query(DataSource).filter_by(project_id=int(instance_id), is_enabled=True).all()
-                for ds in datasources:
-                    await self.send_action(instance_id, "add_data_source", config=ds.dumps_map())
-                
-                # 启用策略
-                strategies = db.query(Strategy).filter_by(project_id=int(instance_id), is_enabled=True).all()
-                for st in strategies:
-                    await self.send_action(instance_id, "add_strategy", config=st.dumps_map())
+                    # 启用数据源
+                    datasources = db.query(DataSource).filter_by(project_id=int(instance_id), is_enabled=True).all()
+                    for ds in datasources:
+                        await self.send_action(instance_id, "add_data_source", config=ds.dumps_map())
+                    
+                    # 启用策略
+                    strategies = db.query(Strategy).filter_by(project_id=int(instance_id), is_enabled=True).all()
+                    for st in strategies:
+                        await self.send_action(instance_id, "add_strategy", config=st.dumps_map())
 
                 return client
             
