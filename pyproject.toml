@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "leek-manager"
-version = "1.9.2"
+version = "1.9.3"
 description = "Leek Manager Service - 量化交易管理系统"
 authors = ["shenglin.li <764935704@qq.com>"]
 readme = "README.md"
@@ -51,6 +51,7 @@ grpcio-tools = "~=1.74.0"
 protobuf = "~=6.31.1"
 lz4 = "~=4.4.4"
 watchdog = "~=4.0.1"
+sse-starlette = "~=1.8.2"
 leek-core = { path = "../leek-core", develop = true }
 
 [tool.poetry.group.dev.dependencies]

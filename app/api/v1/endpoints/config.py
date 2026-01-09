@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.orm import Session
 from app.api.deps import get_db_session
 from app.models.project_config import ProjectConfig
-from app.models.project import Project
 from pydantic import BaseModel, Field
 from typing import Any, Optional, List, Dict
 from app.core.config_manager import config_manager, DatabaseConfig
@@ -122,15 +121,6 @@ async def refresh_mount_dirs(
 ):
     config = db.query(ProjectConfig).filter_by(project_id=project_id).first()
     await leek_template_manager.update_dirs(project_id, config.mount_dirs)
-
-@router.post("/config/restart")
-async def restart_engine(
-    project_id: int = Header(..., description="项目ID"),
-    db: Session = Depends(get_db_session)
-):
-    project = db.query(Project).filter(Project.id == project_id).first()
-    await engine_manager.remove_client(str(project_id))
-    await engine_manager.add_client(str(project_id), project.name)
 
 @router.post("/config/reset_position_state")
 async def reset_position_state(

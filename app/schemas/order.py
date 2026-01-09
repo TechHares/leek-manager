@@ -85,6 +85,7 @@ class ExecutionAsset(BaseModel):
     extra: Optional[Dict[str, Any]] = None
     position_id: Optional[str] = None
     actual_pnl: Optional[Decimal] = None
+    virtual_pnl: Optional[Decimal] = None
 
 class ExecutionInfo(BaseModel):
     id: str = Field(..., description="Execution ID")

@@ -1,7 +1,11 @@
 from typing import List, Optional
+from enum import Enum
+import json
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.api.deps import get_db_session
+from sse_starlette.sse import EventSourceResponse
+from app.api.deps import get_db_session, get_project_id
+from app.db.session import db_connect
 from app.models.project import Project
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
@@ -22,7 +26,6 @@ class ProjectCreate(ProjectBase):
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    is_enabled: Optional[bool] = None
 
 class ProjectResponse(ProjectBase):
     id: int
@@ -33,6 +36,14 @@ class ProjectResponse(ProjectBase):
     
     class Config:
         from_attributes = True
+
+class EngineAction(str, Enum):
+    START = "start"
+    STOP = "stop"
+    RESTART = "restart"
+
+class EngineActionRequest(BaseModel):
+    action: EngineAction
 
 # Endpoints
 @router.get("/projects", response_model=List[ProjectResponse])
@@ -86,13 +97,13 @@ async def delete_project(
     db.commit()
 
 @router.patch("/projects/{project_id}", response_model=ProjectResponse)
-async def update_project_status(
+async def update_project(
     project_id: int,
     project_data: ProjectUpdate,
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ):
-    """更新项目状态"""
+    """更新项目信息"""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(
@@ -106,17 +117,63 @@ async def update_project_status(
             detail="只有项目创建者或管理员可以修改项目"
         )
     
-    # 只更新提供的字段
+    # 只更新 name 和 description
     if project_data.name is not None:
         project.name = project_data.name
     if project_data.description is not None:
         project.description = project_data.description
-    if project_data.is_enabled is not None:
-        project.is_enabled = project_data.is_enabled
-    if project_data.is_enabled is True:
-        await engine_manager.add_client(str(project_id), project.name)
-    else:
-        await engine_manager.remove_client(str(project_id))
+    
     db.commit()
     db.refresh(project)
-    return project 
+    return project
+
+
+@router.post("/engines")
+async def control_engine(
+    request: EngineActionRequest,
+    project_id: int = Depends(get_project_id),
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user)
+):
+    """引擎控制接口，返回 SSE 流"""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    
+    # 提前获取需要的数据，避免生成器内 session 已关闭
+    project_name = project.name
+    
+    def update_project_status(enabled: bool):
+        """在新的 session 中更新项目状态"""
+        with db_connect() as session:
+            proj = session.query(Project).filter(Project.id == project_id).first()
+            if proj:
+                proj.is_enabled = enabled
+                session.commit()
+    
+    async def event_stream():
+        try:
+            if request.action == EngineAction.START:
+                yield {"data": json.dumps({"status": "running", "message": "正在启动引擎..."})}
+                await engine_manager.add_client(str(project_id), project_name)
+                update_project_status(True)
+                yield {"data": json.dumps({"status": "completed", "message": "引擎启动成功"})}
+                
+            elif request.action == EngineAction.STOP:
+                yield {"data": json.dumps({"status": "running", "message": "正在停止引擎..."})}
+                await engine_manager.remove_client(str(project_id))
+                update_project_status(False)
+                yield {"data": json.dumps({"status": "completed", "message": "引擎停止成功"})}
+                
+            elif request.action == EngineAction.RESTART:
+                yield {"data": json.dumps({"status": "running", "message": "正在停止引擎..."})}
+                await engine_manager.remove_client(str(project_id))
+                yield {"data": json.dumps({"status": "running", "message": "正在启动引擎..."})}
+                await engine_manager.add_client(str(project_id), project_name)
+                update_project_status(True)
+                yield {"data": json.dumps({"status": "completed", "message": "引擎重启成功"})}
+                
+        except Exception as e:
+            yield {"data": json.dumps({"status": "failed", "message": str(e)})}
+    
+    return EventSourceResponse(event_stream())
