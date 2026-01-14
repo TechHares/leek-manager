@@ -224,6 +224,8 @@ class EnhancedBacktestCreate(BaseModel):
     use_cache: Optional[bool] = Field(None, description="是否使用缓存（别名，优先于 use_shared_memory_cache）")
     # 日志选项：是否写入 {id}.log
     log_file: Optional[bool] = Field(False, description="是否记录到文件（默认否）")
+    # K线模拟选项
+    simulate_kline: bool = Field(False, description="是否启用K线模拟（使用1分钟K线模拟目标周期）")
     cache_size_mb: int = Field(2048, description="缓存大小限制（MB）")
     mdd_median_max: Optional[float] = Field(None, description="最大回撤中位数上限")
     min_trades_per_window: Optional[int] = Field(None, description="每窗口最小交易数")

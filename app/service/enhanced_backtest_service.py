@@ -77,6 +77,7 @@ class EnhancedBacktestService:
             log_file=bool(getattr(req, 'log_file', False)),
             optuna_enabled=bool(getattr(req, 'optuna_enabled', False)),
             optuna_n_trials=int(getattr(req, 'optuna_n_trials', 80) or 80),
+            simulate_kline=bool(getattr(req, 'simulate_kline', False)),
         )
         # 异步执行回测
         asyncio.create_task(self._execute_backtest_async(backtest_config))
