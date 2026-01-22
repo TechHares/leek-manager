@@ -36,4 +36,10 @@ class FactorEvaluationTask(BaseModel):
     ir = Column(Float, nullable=True)  # IR (Information Ratio)
     ic_win_rate = Column(Float, nullable=True)  # IC胜率
     factor_count = Column(Integer, nullable=True)  # 评价的因子数量
+    
+    # AlphaEval 汇总指标
+    temporal_stability = Column(Float, nullable=True)  # 平均时间稳定性（RRE）
+    robustness_score = Column(Float, nullable=True)  # 平均鲁棒性得分
+    diversity_score = Column(Float, nullable=True)  # 因子集合多样性得分
+    alpha_eval_score = Column(Float, nullable=True)  # AlphaEval综合得分
 

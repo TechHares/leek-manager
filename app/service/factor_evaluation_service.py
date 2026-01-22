@@ -26,6 +26,54 @@ from app.utils.series_codec import encode_time_series, encode_values, downsample
 logger = get_logger(__name__)
 
 
+def calculate_alpha_eval_score(
+    metrics: Dict[str, float],
+    weights: Optional[Dict[str, float]] = None
+) -> float:
+    """
+    计算 AlphaEval 综合得分
+    
+    Args:
+        metrics: 包含各项评估指标的字典
+        weights: 权重配置，默认为 {predictive_power: 0.4, temporal_stability: 0.3, robustness: 0.3}
+    
+    Returns:
+        综合得分 [0, 1]
+    """
+    # 默认权重
+    if weights is None:
+        weights = {
+            'predictive_power': 0.4,
+            'temporal_stability': 0.3,
+            'robustness': 0.3
+        }
+    
+    # 归一化IC到[0,1] - 使用sigmoid函数
+    # IC通常在[-0.1, 0.1]之间，我们将其映射到[0,1]
+    ic_mean = metrics.get('ic_mean', 0.0)
+    # 使用tanh进行归一化：tanh(ic * 10) 将[-0.1, 0.1]映射到约[-0.76, 0.76]
+    # 然后线性变换到[0, 1]
+    predictive_power = (np.tanh(ic_mean * 10) + 1) / 2
+    predictive_power = float(max(0.0, min(1.0, predictive_power)))
+    
+    # 时间稳定性已归一化到[0,1]
+    temporal_stability = float(metrics.get('temporal_stability', 0.0))
+    temporal_stability = max(0.0, min(1.0, temporal_stability))
+    
+    # 鲁棒性已归一化到[0,1]
+    robustness = float(metrics.get('robustness_min', 1.0))
+    robustness = max(0.0, min(1.0, robustness))
+    
+    # 计算加权得分
+    score = (
+        weights.get('predictive_power', 0.4) * predictive_power +
+        weights.get('temporal_stability', 0.3) * temporal_stability +
+        weights.get('robustness', 0.3) * robustness
+    )
+    
+    return float(max(0.0, min(1.0, score)))
+
+
 class FactorEvaluationService:
     """因子评价服务"""
     
@@ -176,6 +224,18 @@ class FactorEvaluationService:
             evaluation_results = final_result.get('evaluation_results', {})
             correlation_matrix = final_result.get('correlation_matrix', {})
             
+            # 计算每个因子的综合评分
+            scoring_weights = req.scoring_weights
+            alpha_eval_scores = []
+            for metric in factor_metrics:
+                alpha_eval_score = calculate_alpha_eval_score(metric, scoring_weights)
+                metric['alpha_eval_score'] = alpha_eval_score
+                alpha_eval_scores.append(alpha_eval_score)
+            
+            # 计算整体平均综合评分
+            overall_alpha_eval_score = float(np.mean(alpha_eval_scores)) if alpha_eval_scores else 0.0
+            summary['alpha_eval_score'] = overall_alpha_eval_score
+            
             # 添加因子名称到 metrics 和 evaluation_results（需要从 factors 获取）
             factor_map = {factor.id: factor for factor in factors}
             for metric in factor_metrics:
@@ -220,6 +280,13 @@ class FactorEvaluationService:
                 task.ir = summary.get('ir')
                 task.ic_win_rate = summary.get('ic_win_rate')
                 task.factor_count = len(req.factor_ids)
+                
+                # AlphaEval 汇总指标
+                task.temporal_stability = summary.get('temporal_stability')
+                task.robustness_score = summary.get('robustness_score')
+                task.diversity_score = summary.get('diversity_score')
+                # alpha_eval_score 将在综合评分计算后设置
+                task.alpha_eval_score = summary.get('alpha_eval_score')
                 
                 # 确保进度和状态正确
                 task.progress = 1.0
@@ -324,6 +391,11 @@ class FactorEvaluationService:
             future_periods=req.future_periods,
             quantile_count=req.quantile_count,
             ic_window=req.ic_window,
+            # AlphaEval 配置
+            enable_robustness=req.enable_robustness,
+            robustness_noise_level=req.robustness_noise_level,
+            robustness_trials=req.robustness_trials,
+            scoring_weights=req.scoring_weights,
             max_workers=max_workers,
         )
         

@@ -324,3 +324,98 @@ async def delete_factor_evaluation_task(
     db.commit()
     return {"status": "success"}
 
+
+@router.post("/factor_evaluation/{task_id}/filter_factors")
+async def filter_factors_by_score(
+    task_id: int,
+    min_score: float = Query(0.5, ge=0.0, le=1.0, description="最低综合得分阈值"),
+    top_n: Optional[int] = Query(None, ge=1, description="返回前N个因子"),
+    sort_by: str = Query("alpha_eval_score", description="排序字段"),
+    ascending: bool = Query(False, description="是否升序排序"),
+    min_ic: Optional[float] = Query(None, description="最低IC均值"),
+    min_stability: Optional[float] = Query(None, ge=0.0, le=1.0, description="最低时间稳定性"),
+    min_robustness: Optional[float] = Query(None, ge=0.0, le=1.0, description="最低鲁棒性"),
+    db: Session = Depends(deps.get_db_session),
+    project_id: int = Depends(deps.get_project_id),
+):
+    """
+    根据综合评分和其他指标筛选因子
+    
+    支持多维度筛选条件：
+    - min_score: AlphaEval综合得分阈值
+    - top_n: 返回Top N个因子
+    - sort_by: 排序字段（alpha_eval_score, ic_mean, temporal_stability等）
+    - min_ic: IC均值下限
+    - min_stability: 时间稳定性下限
+    - min_robustness: 鲁棒性下限
+    """
+    # 查询任务
+    task = db.query(FactorEvaluationTask).filter(
+        FactorEvaluationTask.id == task_id,
+        FactorEvaluationTask.project_id == project_id
+    ).first()
+    
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    # 加载metrics数据
+    if task.metrics is None:
+        db.refresh(task, ['metrics'])
+    
+    if not task.metrics:
+        raise HTTPException(status_code=404, detail="No metrics data found")
+    
+    # 筛选因子
+    filtered_factors = []
+    for metric in task.metrics:
+        # 检查综合得分
+        alpha_score = metric.get('alpha_eval_score', 0.0)
+        if alpha_score < min_score:
+            continue
+        
+        # 检查IC
+        if min_ic is not None and metric.get('ic_mean', 0.0) < min_ic:
+            continue
+        
+        # 检查时间稳定性
+        if min_stability is not None and metric.get('temporal_stability', 0.0) < min_stability:
+            continue
+        
+        # 检查鲁棒性
+        if min_robustness is not None and metric.get('robustness_min', 1.0) < min_robustness:
+            continue
+        
+        filtered_factors.append(metric)
+    
+    # 排序
+    valid_sort_fields = ['alpha_eval_score', 'ic_mean', 'ir', 'ic_win_rate', 
+                        'temporal_stability', 'robustness_min', 'estimated_turnover']
+    if sort_by not in valid_sort_fields:
+        sort_by = 'alpha_eval_score'
+    
+    filtered_factors.sort(
+        key=lambda x: x.get(sort_by, 0.0) if x.get(sort_by) is not None else 0.0,
+        reverse=not ascending
+    )
+    
+    # 取Top N
+    if top_n is not None and top_n > 0:
+        filtered_factors = filtered_factors[:top_n]
+    
+    # 返回结果
+    return {
+        'task_id': task_id,
+        'total_factors': len(task.metrics),
+        'filtered_count': len(filtered_factors),
+        'factors': filtered_factors,
+        'filter_criteria': {
+            'min_score': min_score,
+            'top_n': top_n,
+            'sort_by': sort_by,
+            'ascending': ascending,
+            'min_ic': min_ic,
+            'min_stability': min_stability,
+            'min_robustness': min_robustness,
+        }
+    }
+

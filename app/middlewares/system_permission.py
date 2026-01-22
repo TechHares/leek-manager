@@ -111,7 +111,7 @@ async def system_permission_middleware(request: Request, call_next):
         #         return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"detail": "权限不足"})
     
     except JWTError as e:
-        logger.warning(f"JWTError: {e.message}")
+        logger.warning(f"JWTError: {e}")
         return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "无效token"})
     
     response = await call_next(request)
