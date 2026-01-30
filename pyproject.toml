@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "leek-manager"
-version = "1.9.5"
+version = "1.10.0"
 description = "Leek Manager Service - 量化交易管理系统"
 authors = ["shenglin.li <764935704@qq.com>"]
 readme = "README.md"
@@ -105,4 +105,9 @@ priority = "supplemental"
 
 [[tool.poetry.source]]
 name = "pypi"
+priority = "supplemental"
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
 priority = "supplemental"
